@@ -70,6 +70,17 @@ python infer.py --num_layers=50 --batch_size=8 --model='model/90' --test_list=''
 ```
 TBD
 
+## CPU
+When running on CPU specify environment variables:
+
+```OMP_NUM_THREADS=<number_of_physical_cores> KMP_AFFINITY=granularity=fine,compact,1,0```
+
+### Training
+To train on CPU with best performance, add `--use_gpu=False --use_mkldnn=True --parallel_exe=False` to the command.
+
+### Inference
+For inference, add `--use_gpu=False --use_mkldnn=True` to the command.
+
 ## Results
 
 The SE-ResNeXt-50 model is trained by starting with learning rate ```0.1``` and decaying it by ```0.1``` after each ```10``` epoches. Top-1/Top-5 Validation Accuracy on ImageNet 2012 is listed in table.

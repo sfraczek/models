@@ -1,9 +1,24 @@
+#   Copyright (c) 2018 PaddlePaddle Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import os
 import numpy as np
 import time
 import sys
 import paddle
 import paddle.fluid as fluid
+import paddle.fluid.profiler as profiler
 from se_resnext import SE_ResNeXt
 from mobilenet import mobile_net
 from inception_v4 import inception_v4
@@ -18,17 +33,24 @@ import math
 
 parser = argparse.ArgumentParser(description=__doc__)
 add_arg = functools.partial(add_arguments, argparser=parser)
-add_arg('batch_size', int, 256, "Minibatch size.")
-add_arg('num_layers', int, 50, "How many layers for SE-ResNeXt model.")
-add_arg('with_mem_opt', bool, True,
-        "Whether to use memory optimization or not.")
-add_arg('parallel_exe', bool, True,
-        "Whether to use ParallelExecutor to train or not.")
-add_arg('init_model', str, None, "Whether to use initialized model.")
-add_arg('pretrained_model', str, None, "Whether to use pretrained model.")
-add_arg('lr_strategy', str, "cosine_decay",
-        "Set the learning rate decay strategy.")
-add_arg('model', str, "se_resnext", "Set the network to use.")
+
+# yapf: disable
+add_arg('batch_size',       int,  256,           "Minibatch size.")
+add_arg('num_layers',       int,  50,            "How many layers for SE-ResNeXt model.")
+add_arg('with_mem_opt',     bool, True,          "Whether to use memory optimization or not.")
+add_arg('parallel_exe',     bool, True,          "Whether to use ParallelExecutor to train or not.")
+add_arg('init_model',       str, None,           "Whether to use initialized model.")
+add_arg('pretrained_model', str, None,           "Whether to use pretrained model.")
+add_arg('lr_strategy',      str, "cosine_decay", "Set the learning rate decay strategy.")
+add_arg('model',            str, "se_resnext",   "Set the network to use.", choices=["se_resnext", "mobilenet_ssd"])
+add_arg('use_mkldnn',       bool, False,         "If set, use MKLDNN library.")
+add_arg('use_gpu',          bool, True,          "Whether to use GPU or not.")
+add_arg('iterations',       int,  0,             "The number of iterations. Zero or less means whole training set. More than 0 means the training set might be looped until # of iterations is reached.")
+add_arg('skip_test',        bool, True,          "Whether to skip test phase.")
+add_arg('pass_num',         int,  120,           "The number of passes.")
+add_arg('profile',          bool, False,         "If set, do profiling.")
+add_arg('skip_batch_num',   int,  0,             "The number of first minibatches to skip as warm-up for better performance test.")
+# yapf: enable
 
 
 def cosine_decay(learning_rate, step_each_epoch, epochs=120):
@@ -68,9 +90,13 @@ def train_parallel_do(args,
         with pd.do():
             image_ = pd.read_input(image)
             label_ = pd.read_input(label)
+
             if args.model is 'se_resnext':
                 out = SE_ResNeXt(
-                    input=image_, class_dim=class_dim, layers=layers)
+                    input=image_,
+                    class_dim=class_dim,
+                    layers=layers,
+                    use_mkldnn=args.use_mkldnn)
             elif args.model is 'mobile_net':
                 out = mobile_net(img=image_, class_dim=class_dim)
             else:
@@ -90,7 +116,11 @@ def train_parallel_do(args,
         acc_top5 = fluid.layers.mean(x=acc_top5)
     else:
         if args.model is 'se_resnext':
-            out = SE_ResNeXt(input=image, class_dim=class_dim, layers=layers)
+            out = SE_ResNeXt(
+                input=image,
+                class_dim=class_dim,
+                layers=layers,
+                use_mkldnn=args.use_mkldnn)
         elif args.model is 'mobile_net':
             out = mobile_net(img=image, class_dim=class_dim)
         else:
@@ -131,7 +161,7 @@ def train_parallel_do(args,
     if args.with_mem_opt:
         fluid.memory_optimize(fluid.default_main_program())
 
-    place = fluid.CUDAPlace(0)
+    place = fluid.CUDAPlace(0) if args.use_gpu else fluid.CPUPlace()
     exe = fluid.Executor(place)
     exe.run(fluid.default_startup_program())
 
@@ -145,14 +175,25 @@ def train_parallel_do(args,
 
         fluid.io.load_vars(exe, pretrained_model, predicate=if_exist)
 
-    train_reader = paddle.batch(reader.train(), batch_size=batch_size)
+    train_reader = paddle.batch(
+        reader.train(cycle=args.iterations > 0), batch_size=batch_size)
     test_reader = paddle.batch(reader.test(), batch_size=batch_size)
     feeder = fluid.DataFeeder(place=place, feed_list=[image, label])
 
     for pass_id in range(num_passes):
         train_info = [[], [], []]
         test_info = [[], [], []]
+        iters = 0
+        batch_times = []
+
         for batch_id, data in enumerate(train_reader()):
+            iters = batch_id
+            if batch_id == args.skip_batch_num:
+                profiler.reset_profiler()
+            elif batch_id < args.skip_batch_num:
+                print("Warm-up iteration")
+            if args.iterations > 0 and batch_id == args.iterations + args.skip_batch_num:
+                break
             t1 = time.time()
             loss, acc1, acc5 = exe.run(
                 fluid.default_main_program(),
@@ -160,55 +201,70 @@ def train_parallel_do(args,
                 fetch_list=[avg_cost, acc_top1, acc_top5])
             t2 = time.time()
             period = t2 - t1
+            batch_time = period
+            fps = args.batch_size / batch_time
+            batch_times.append(batch_time)
             train_info[0].append(loss[0])
             train_info[1].append(acc1[0])
             train_info[2].append(acc5[0])
-            if batch_id % 10 == 0:
-                print("Pass {0}, trainbatch {1}, loss {2}, \
-                       acc1 {3}, acc5 {4} time {5}"
-                                                   .format(pass_id, \
-                       batch_id, loss[0], acc1[0], acc5[0], \
-                       "%2.2f sec" % period))
-                sys.stdout.flush()
+            print(
+                "Train pass {0}, trainbatch {1}, loss {2}, acc1 {3}, acc5 {4} time {5}, latency: {6}, fps: {7}"
+                .format(pass_id, batch_id, loss[0], acc1[0], acc5[0],
+                        "%2.2f sec" % period, batch_time, fps))
+            sys.stdout.flush()
 
         train_loss = np.array(train_info[0]).mean()
         train_acc1 = np.array(train_info[1]).mean()
         train_acc5 = np.array(train_info[2]).mean()
-        for data in test_reader():
-            t1 = time.time()
-            loss, acc1, acc5 = exe.run(
-                inference_program,
-                feed=feeder.feed(data),
-                fetch_list=[avg_cost, acc_top1, acc_top5])
-            t2 = time.time()
-            period = t2 - t1
-            test_info[0].append(loss[0])
-            test_info[1].append(acc1[0])
-            test_info[2].append(acc5[0])
-            if batch_id % 10 == 0:
-                print("Pass {0},testbatch {1},loss {2}, \
-                       acc1 {3},acc5 {4},time {5}"
-                                                  .format(pass_id, \
-                       batch_id, loss[0], acc1[0], acc5[0], \
-                       "%2.2f sec" % period))
+
+        if not args.skip_test:
+            for batch_id, data in enumerate(test_reader()):
+                t1 = time.time()
+                loss, acc1, acc5 = exe.run(
+                    inference_program,
+                    feed=feeder.feed(data),
+                    fetch_list=[avg_cost, acc_top1, acc_top5])
+                t2 = time.time()
+                period = t2 - t1
+                test_info[0].append(loss[0])
+                test_info[1].append(acc1[0])
+                test_info[2].append(acc5[0])
+                print(
+                    "Test pass {0}, testbatch {1}, loss {2}, acc1 {3}, acc5 {4}, time {5}"
+                    .format(pass_id, batch_id, loss[0], acc1[0], acc5[0],
+                            "%2.2f sec" % period))
                 sys.stdout.flush()
 
-        test_loss = np.array(test_info[0]).mean()
-        test_acc1 = np.array(test_info[1]).mean()
-        test_acc5 = np.array(test_info[2]).mean()
+            test_loss = np.array(test_info[0]).mean()
+            test_acc1 = np.array(test_info[1]).mean()
+            test_acc5 = np.array(test_info[2]).mean()
 
-        print("End pass {0}, train_loss {1}, train_acc1 {2}, train_acc5 {3}, \
-               test_loss {4}, test_acc1 {5}, test_acc5 {6}"
-                                                           .format(pass_id, \
-              train_loss, train_acc1, train_acc5, test_loss, test_acc1, \
-              test_acc5))
-        sys.stdout.flush()
+            print("End pass {0}, train_loss {1}, train_acc1 {2}, train_acc5 {3}, " \
+                "test_loss {4}, test_acc1 {5}, test_acc5 {6}"
+                .format(pass_id, train_loss, train_acc1, train_acc5, test_loss,
+                        test_acc1, test_acc5))
+            sys.stdout.flush()
 
-        model_path = os.path.join(model_save_dir + '/' + args.model,
-                                  str(pass_id))
-        if not os.path.isdir(model_path):
-            os.makedirs(model_path)
-        fluid.io.save_persistables(exe, model_path)
+            model_path = os.path.join(model_save_dir + '/' + args.model,
+                                      str(pass_id))
+            if not os.path.isdir(model_path):
+                os.makedirs(model_path)
+            fluid.io.save_persistables(exe, model_path)
+
+        latencies = batch_times[args.skip_batch_num:]
+        latency_avg = np.average(latencies)
+        latency_pc99 = np.percentile(latencies, 99)
+        fpses = np.divide(args.batch_size, latencies)
+        fps_avg = np.average(fpses)
+        fps_pc99 = np.percentile(fpses, 1)
+
+        # Benchmark output
+        print('\nTotal examples (incl. warm-up): %d' %
+              (iters * args.batch_size))
+        print('average latency: %.5f s, 99pc latency: %.5f s' % (latency_avg,
+                                                                 latency_pc99))
+        print('average fps: %.5f, fps for 99pc latency: %.5f' % (fps_avg,
+                                                                 fps_pc99))
 
 
 def train_parallel_exe(args,
@@ -270,7 +326,7 @@ def train_parallel_exe(args,
     if args.with_mem_opt:
         fluid.memory_optimize(fluid.default_main_program())
 
-    place = fluid.CUDAPlace(0)
+    place = fluid.CUDAPlace(0) if args.use_gpu else fluid.CPUPlace()
     exe = fluid.Executor(place)
     exe.run(fluid.default_startup_program())
 
@@ -284,77 +340,105 @@ def train_parallel_exe(args,
 
         fluid.io.load_vars(exe, pretrained_model, predicate=if_exist)
 
-    train_reader = paddle.batch(reader.train(), batch_size=batch_size)
+    train_reader = paddle.batch(
+        reader.train(cycle=args.iterations > 0), batch_size=batch_size)
     test_reader = paddle.batch(reader.test(), batch_size=batch_size)
 
     feeder = fluid.DataFeeder(place=place, feed_list=[image, label])
 
-    train_exe = fluid.ParallelExecutor(use_cuda=True, loss_name=avg_cost.name)
+    use_cuda = args.use_gpu
+    train_exe = fluid.ParallelExecutor(
+        use_cuda=use_cuda, loss_name=avg_cost.name)
     test_exe = fluid.ParallelExecutor(
-        use_cuda=True, main_program=test_program, share_vars_from=train_exe)
+        use_cuda=use_cuda, main_program=test_program, share_vars_from=train_exe)
 
     fetch_list = [avg_cost.name, acc_top1.name, acc_top5.name]
 
     for pass_id in range(num_passes):
         train_info = [[], [], []]
         test_info = [[], [], []]
+        batch_times = []
+        iters = 0
+
         for batch_id, data in enumerate(train_reader()):
+            iters = batch_id
+            if batch_id == args.skip_batch_num:
+                profiler.reset_profiler()
+            elif batch_id < args.skip_batch_num:
+                print("Warm-up iteration")
+            if args.iterations > 0 and batch_id == args.iterations + args.skip_batch_num:
+                break
             t1 = time.time()
             loss, acc1, acc5 = train_exe.run(fetch_list, feed=feeder.feed(data))
             t2 = time.time()
             period = t2 - t1
+            batch_time = period
+            fps = args.batch_size / batch_time
+            batch_times.append(batch_time)
             loss = np.mean(np.array(loss))
             acc1 = np.mean(np.array(acc1))
             acc5 = np.mean(np.array(acc5))
             train_info[0].append(loss)
             train_info[1].append(acc1)
             train_info[2].append(acc5)
-            if batch_id % 10 == 0:
-                print("Pass {0}, trainbatch {1}, loss {2}, \
-                       acc1 {3}, acc5 {4} time {5}"
-                                                   .format(pass_id, \
-                       batch_id, loss, acc1, acc5, \
-                       "%2.2f sec" % period))
-                sys.stdout.flush()
+            print(
+                "Train pass {0}, trainbatch {1}, loss {2}, acc1 {3}, acc5 {4}, time {5}, latency: {6}, fps: {7}"
+                .format(pass_id, batch_id, loss, acc1, acc5, "%2.2f sec" %
+                        period, batch_time, fps))
 
         train_loss = np.array(train_info[0]).mean()
         train_acc1 = np.array(train_info[1]).mean()
         train_acc5 = np.array(train_info[2]).mean()
-        for data in test_reader():
-            t1 = time.time()
-            loss, acc1, acc5 = test_exe.run(fetch_list, feed=feeder.feed(data))
-            t2 = time.time()
-            period = t2 - t1
-            loss = np.mean(np.array(loss))
-            acc1 = np.mean(np.array(acc1))
-            acc5 = np.mean(np.array(acc5))
-            test_info[0].append(loss)
-            test_info[1].append(acc1)
-            test_info[2].append(acc5)
-            if batch_id % 10 == 0:
-                print("Pass {0},testbatch {1},loss {2}, \
-                       acc1 {3},acc5 {4},time {5}"
-                                                  .format(pass_id, \
-                       batch_id, loss, acc1, acc5, \
-                       "%2.2f sec" % period))
+
+        if not args.skip_test:
+            for batch_id, data in enumerate(test_reader()):
+                t1 = time.time()
+                loss, acc1, acc5 = test_exe.run(fetch_list,
+                                                feed=feeder.feed(data))
+                t2 = time.time()
+                period = t2 - t1
+                loss = np.mean(np.array(loss))
+                acc1 = np.mean(np.array(acc1))
+                acc5 = np.mean(np.array(acc5))
+                test_info[0].append(loss)
+                test_info[1].append(acc1)
+                test_info[2].append(acc5)
+                print(
+                    "Test pass {0}, testbatch {1}, loss {2}, acc1 {3}, acc5 {4}, time {5}"
+                    .format(pass_id, batch_id, loss, acc1, acc5, "%2.2f sec" %
+                            period))
                 sys.stdout.flush()
 
-        test_loss = np.array(test_info[0]).mean()
-        test_acc1 = np.array(test_info[1]).mean()
-        test_acc5 = np.array(test_info[2]).mean()
+            test_loss = np.array(test_info[0]).mean()
+            test_acc1 = np.array(test_info[1]).mean()
+            test_acc5 = np.array(test_info[2]).mean()
 
-        print("End pass {0}, train_loss {1}, train_acc1 {2}, train_acc5 {3}, \
-               test_loss {4}, test_acc1 {5}, test_acc5 {6}"
-                                                           .format(pass_id, \
-              train_loss, train_acc1, train_acc5, test_loss, test_acc1, \
-              test_acc5))
-        sys.stdout.flush()
+            print("End pass {0}, train_loss {1}, train_acc1 {2}, train_acc5 {3}, " \
+                "test_loss {4}, test_acc1 {5}, test_acc5 {6}"
+                .format(pass_id, train_loss, train_acc1, train_acc5, test_loss,
+                        test_acc1, test_acc5))
+            sys.stdout.flush()
 
-        model_path = os.path.join(model_save_dir + '/' + args.model,
-                                  str(pass_id))
-        if not os.path.isdir(model_path):
-            os.makedirs(model_path)
-        fluid.io.save_persistables(exe, model_path)
+            model_path = os.path.join(model_save_dir + '/' + args.model,
+                                      str(pass_id))
+            if not os.path.isdir(model_path):
+                os.makedirs(model_path)
+            fluid.io.save_persistables(exe, model_path)
+
+        latencies = batch_times[args.skip_batch_num:]
+        latency_avg = np.average(latencies)
+        latency_pc99 = np.percentile(latencies, 99)
+        fpses = np.divide(args.batch_size, latencies)
+        fps_avg = np.average(fpses)
+        fps_pc99 = np.percentile(fpses, 1)
+
+        # Benchmark output
+        print('\nTotal examples (incl. warm-up): %d' %
+              (iters * args.batch_size))
+        print('average latency: %.5f s, 99pc latency: %.5f s' % (latency_avg,
+                                                                 latency_pc99))
+        print('average fps: %.5f, fps for 99pc latency: %.5f' % (fps_avg,
+                                                                 fps_pc99))
 
 
 if __name__ == '__main__':
@@ -364,7 +448,7 @@ if __name__ == '__main__':
     total_images = 1281167
     batch_size = args.batch_size
     step = int(total_images / batch_size + 1)
-    num_epochs = 120
+    num_epochs = args.pass_num
 
     learning_rate_mode = args.lr_strategy
     lr_strategy = {}
@@ -381,20 +465,48 @@ if __name__ == '__main__':
     else:
         lr_strategy = None
 
-    use_nccl = True
+    use_nccl = args.use_gpu
     # layers: 50, 152
     layers = args.num_layers
     method = train_parallel_exe if args.parallel_exe else train_parallel_do
     init_model = args.init_model if args.init_model else None
     pretrained_model = args.pretrained_model if args.pretrained_model else None
-    method(
-        args,
-        learning_rate=0.1,
-        batch_size=batch_size,
-        num_passes=num_epochs,
-        init_model=init_model,
-        pretrained_model=pretrained_model,
-        parallel=True,
-        use_nccl=True,
-        lr_strategy=lr_strategy,
-        layers=layers)
+    if args.profile:
+        if args.use_gpu:
+            with profiler.cuda_profiler("cuda_profiler.txt", 'csv') as nvprof:
+                method(
+                    args,
+                    learning_rate=0.1,
+                    batch_size=batch_size,
+                    num_passes=num_epochs,
+                    init_model=init_model,
+                    pretrained_model=pretrained_model,
+                    parallel=args.parallel_exe,
+                    use_nccl=use_nccl,
+                    lr_strategy=lr_strategy,
+                    layers=layers)
+        else:
+            with profiler.profiler("CPU", sorted_key='total') as cpuprof:
+                method(
+                    args,
+                    learning_rate=0.1,
+                    batch_size=batch_size,
+                    num_passes=num_epochs,
+                    init_model=init_model,
+                    pretrained_model=pretrained_model,
+                    parallel=args.parallel_exe,
+                    use_nccl=use_nccl,
+                    lr_strategy=lr_strategy,
+                    layers=layers)
+    else:
+        method(
+            args,
+            learning_rate=0.1,
+            batch_size=batch_size,
+            num_passes=num_epochs,
+            init_model=init_model,
+            pretrained_model=pretrained_model,
+            parallel=args.parallel_exe,
+            use_nccl=use_nccl,
+            lr_strategy=lr_strategy,
+            layers=layers)
