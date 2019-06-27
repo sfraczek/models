@@ -7,13 +7,16 @@ import time
 import sys
 import paddle
 import paddle.fluid as fluid
-import reader_cv2 as reader
+#  import reader_aeon as reader
 import argparse
 import functools
 import models
 from utils.learning_rate import cosine_decay
 from utils.utility import add_arguments, print_arguments
 import math
+
+import json
+from aeon import DataLoader
 
 parser = argparse.ArgumentParser(description=__doc__)
 add_arg = functools.partial(add_arguments, argparser=parser)
@@ -81,22 +84,71 @@ def eval(args):
 
     fluid.io.load_persistables(exe, pretrained_model)
 
-    val_reader = paddle.batch(
-        reader.val(settings=args), batch_size=args.batch_size)
+    image_config = {
+        "type": "image",
+        "height": 224,
+        "width": 224,
+        "output_type": "float",
+        "channel_major": True
+    }
+
+    label_config = {"type": "label", "binary": False}
+
+    augmentation_config = {
+        "type": "image",
+        "flip_enable": False,
+        "center": True,
+        "crop_enable": True,
+        "scale": [224.0/256.0, 224.0/256.0]
+    }
+
+    manifest_filename = "/mnt/drive/data/i1k/i1k-extracted/val-index_copied.csv"
+    # manifest_filename = "/mnt/drive/data/i1k/i1k-extracted/val-index.csv"
+    #  manifest_root = "/mnt/drive/data/i1k/i1k-extracted"
+    manifest_root =  "/mnt/drive/data/ILSVRC2012_china/"
+    cache_dir = ""
+    #  cache_dir = "/mnt/drive/.aeon-cache/"
+
+    config = dict()
+    config['decode_thread_count'] = 14
+    config['manifest_filename'] = manifest_filename
+    config['manifest_root'] = manifest_root
+    config['cache_directory'] = cache_dir
+    config['etl'] = [image_config, label_config]
+    config['augmentation'] = [augmentation_config]
+    config['batch_size'] = args.batch_size
+
+    #  print(json.dumps(config, indent=4))
+
+    dl = DataLoader(config)
     feeder = fluid.DataFeeder(place=place, feed_list=[image, label])
 
     test_info = [[], [], []]
     cnt = 0
     batch_id = 0
-    for data in val_reader():
+    img_mean = np.array([0.485, 0.456, 0.406]).reshape((3, 1, 1))
+    img_std = np.array([0.229, 0.224, 0.225]).reshape((3, 1, 1))
+    img_mean = np.array(img_mean).reshape((3, 1, 1))
+    img_std = np.array(img_std).reshape((3, 1, 1))
+    while True:
         batch_id += 1
+        data = dl.next()
+        batch = {k: v for k, v in data}
+        images = batch['image']
+        labels = batch['label']
+
+        images /= 255
+        images -= img_mean
+        images /= img_std
+
         t1 = time.time()
+        feed_data = zip(images, labels)
         loss, acc1, acc5 = exe.run(
-            test_program, fetch_list=fetch_list, feed=feeder.feed(data))
-        #  with open('objs.txt','w') as f:
-        #      print(len(data))
+            test_program, fetch_list=fetch_list, feed=feeder.feed(feed_data))
+        #  with open('objs_aeon.txt', 'w') as f:
+        #      print(len(feed_data))
         #      np.set_printoptions(threshold=np.inf)
-        #      print(data[0])
+        #      print(feed_data[0])
         #      return
         t2 = time.time()
         period = t2 - t1
