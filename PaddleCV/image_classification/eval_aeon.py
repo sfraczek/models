@@ -7,7 +7,7 @@ import time
 import sys
 import paddle
 import paddle.fluid as fluid
-#  import reader_aeon as reader
+import reader_aeon as reader
 import argparse
 import functools
 import models
@@ -106,8 +106,8 @@ def eval(args):
     # manifest_filename = "/mnt/drive/data/i1k/i1k-extracted/val-index.csv"
     #  manifest_root = "/mnt/drive/data/i1k/i1k-extracted"
     manifest_root =  "/mnt/drive/data/ILSVRC2012_china/"
-    cache_dir = ""
-    #  cache_dir = "/mnt/drive/.aeon-cache/"
+    #  cache_dir = ""
+    cache_dir = "/mnt/drive/.aeon-cache/"
 
     config = dict()
     config['decode_thread_count'] = 14

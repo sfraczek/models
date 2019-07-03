@@ -8,56 +8,85 @@ import io
 import json
 from aeon import DataLoader
 
-DATA_DIR = './data/ILSVRC2012'
+# dane wchodza rgb
+# co robi ten transpose 2,0,1
+# bgr -> rgb
+# hwc -> chw
+# subtract mean div by stdev
+# img_mean = np.array([0.485, 0.456, 0.406]).reshape((3, 1, 1))
+# img_std = np.array([0.229, 0.224, 0.225]).reshape((3, 1, 1))
 
-def _reader_creator(settings,
-                    file_list,
-                    mode,
-                    shuffle=False,
-                    color_jitter=False,
-                    rotate=False,
-                    data_dir=DATA_DIR,
-                    pass_id_as_seed=0):
-    def reader():
-        # !!!!!!! PAMIETAJ aby potwierdzic ze dane wchodza w nchw rgb
+def train_reader(settings):
+    image_config = {
+        "type": "image",
+        "height": 224,
+        "width": 224,
+        "output_type": "float",
+        "channel_major": True
+    }
 
-        # co robi ten transpose 2,0,1
-        # bgr -> rgb
-        # hwc -> chw
-        # subtract mean div by stdev
-        # img_mean = np.array([0.485, 0.456, 0.406]).reshape((3, 1, 1))
-        # img_std = np.array([0.229, 0.224, 0.225]).reshape((3, 1, 1))
+    label_config = {"type": "label", "binary": False}
 
-        image_config = {"type": "image", "height": 224, "width": 224, 
-                "channel_major": True}
+    augmentation_config = {
+        "type": "image",
+        "flip_enable": True,
+        "center": False,
+        "crop_enable": True,
+        "scale": [224.0/256.0, 224.0/256.0]
+    }
 
-        label_config = {"type": "label", "binary": True}
+    manifest_filename = "/mnt/drive/data/i1k/i1k-extracted/train-index_copied.csv"
+    manifest_root =  "/mnt/drive/data/ILSVRC2012_china/"
+    cache_dir = "/mnt/drive/.aeon-cache/"
 
-        augmentation_config = {"type": "image", "flip_enable": False}
+    config = dict()
+    config['decode_thread_count'] = 14
+    config['manifest_filename'] = manifest_filename
+    config['manifest_root'] = manifest_root
+    config['cache_directory'] = cache_dir
+    config['etl'] = [image_config, label_config]
+    config['augmentation'] = [augmentation_config]
+    config['batch_size'] = settings.batch_size
 
-            #"/mnt/drive/data/i1k/i1k-extracted/val-index.csv",
-        aeon_config = {
-            "manifest_filename": "/mnt/drive/data/ILSVRC2012_china/val_list.txt"
-            "cache_directory": "/mnt/drive/.aeon-cache/",
-            "etl": (image_config, label_config),
-            "augment": (augmentation_config),
-            "batch_size": 50
-        }
+    #  print(json.dumps(config, indent=4))
 
-        dl = DataLoader(json.dumps(aeon_config))
-        #  data = dl.next()
-        #  batch = {k: v for k, v in data}
-        #  images = batch['image']
-        #  labels = batch['label']
-
-        yield dl.next()
-
-
-def val(settings, data_dir=DATA_DIR):
-    return _reader_creator(
-        settings, '', 'val', shuffle=False, data_dir=data_dir)
+    dl = DataLoader(config)
+    return dl
 
 
-def test(settings, data_dir=DATA_DIR):
-    return _reader_creator(
-        settings, '', 'test', shuffle=False, data_dir=data_dir)
+def val_reader(settings):
+    image_config = {
+        "type": "image",
+        "height": 224,
+        "width": 224,
+        "output_type": "float",
+        "channel_major": True
+    }
+
+    label_config = {"type": "label", "binary": False}
+
+    augmentation_config = {
+        "type": "image",
+        "flip_enable": False,
+        "center": True,
+        "crop_enable": True,
+        "scale": [224.0/256.0, 224.0/256.0]
+    }
+
+    manifest_filename = "/mnt/drive/data/i1k/i1k-extracted/val-index_copied.csv"
+    manifest_root =  "/mnt/drive/data/ILSVRC2012_china/"
+    cache_dir = "/mnt/drive/.aeon-cache/"
+
+    config = dict()
+    config['decode_thread_count'] = 14
+    config['manifest_filename'] = manifest_filename
+    config['manifest_root'] = manifest_root
+    config['cache_directory'] = cache_dir
+    config['etl'] = [image_config, label_config]
+    config['augmentation'] = [augmentation_config]
+    config['batch_size'] = settings.batch_size
+
+    #  print(json.dumps(config, indent=4))
+
+    dl = DataLoader(config)
+    return dl
