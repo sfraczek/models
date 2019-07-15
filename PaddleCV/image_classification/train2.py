@@ -55,6 +55,7 @@ add_arg('use_mixup',      bool,      False,        "Whether to use mixup or not"
 add_arg('mixup_alpha',      float,     0.2,      "Set the mixup_alpha parameter")
 add_arg('is_distill',       bool,  False,        "is distill or not")
 
+
 def optimizer_setting(params):
     ls = params["learning_strategy"]
     l2_decay = params["l2_decay"]
@@ -163,6 +164,7 @@ def optimizer_setting(params):
 
     return optimizer
 
+
 def calc_loss(epsilon,label,class_dim,softmax_out,use_label_smoothing):
     if use_label_smoothing:
         label_one_hot = fluid.layers.one_hot(input=label, depth=class_dim)
@@ -218,7 +220,7 @@ def net_config(image, model, args, is_train, label=0, y_a=0, y_b=0, lam=0.0):
                     return avg_cost
                 else:
                     cost = calc_loss(epsilon,label,class_dim,softmax_out,use_label_smoothing)
-                    
+
             else:
                 cost = fluid.layers.cross_entropy(input=softmax_out, label=label)
         else:
@@ -226,7 +228,7 @@ def net_config(image, model, args, is_train, label=0, y_a=0, y_b=0, lam=0.0):
             softmax_out1, softmax_out = fluid.layers.softmax(out1), fluid.layers.softmax(out2)
             smooth_out1 = fluid.layers.label_smooth(label=softmax_out1, epsilon=0.0, dtype="float32")
             cost = fluid.layers.cross_entropy(input=softmax_out, label=smooth_out1, soft_label=True)
-        
+
         avg_cost = fluid.layers.mean(cost)
         if args.scale_loss > 1:
             avg_cost = fluid.layers.mean(x=cost) * float(args.scale_loss)
@@ -234,6 +236,7 @@ def net_config(image, model, args, is_train, label=0, y_a=0, y_b=0, lam=0.0):
         acc_top5 = fluid.layers.accuracy(input=softmax_out, label=label, k=5)
 
     return avg_cost, acc_top1, acc_top5
+
 
 def build_program(is_train, main_prog, startup_prog, args):
     image_shape = [int(m) for m in args.image_shape.split(",")]
@@ -302,6 +305,7 @@ def build_program(is_train, main_prog, startup_prog, args):
 
     return build_program_out
 
+
 def get_device_num():
     visible_device = os.getenv('CUDA_VISIBLE_DEVICES')
     if visible_device:
@@ -309,6 +313,7 @@ def get_device_num():
     else:
         device_num = subprocess.check_output(['nvidia-smi','-L']).decode().count('\n')
     return device_num
+
 
 def train(args):
     # parameters from arguments
@@ -385,11 +390,11 @@ def train(args):
         np.random.seed(0)
         train_reader = paddle.batch(
         reader.train(settings=args), batch_size=args.batch_size)
-        test_reader = paddle.batch(
-        reader.val(settings=args), batch_size=args.batch_size)
+        #  test_reader = paddle.batch(
+        #  reader.val(settings=args), batch_size=args.batch_size)
 
     train_py_reader.decorate_paddle_reader(train_reader)
-    test_py_reader.decorate_paddle_reader(test_reader)
+    #  test_py_reader.decorate_paddle_reader(test_reader)
 
     # use_ngraph is for CPU only, please refer to README_ngraph.md for details
     use_ngraph = os.getenv('FLAGS_use_ngraph')
@@ -411,8 +416,10 @@ def train(args):
         test_info = [[], [], []]
         train_time = []
         batch_id = 0
+        max_iter = math.floor(args.total_images/args.batch_size)
         try:
-            while True:
+            while batch_id < max_iter:
+                batch_id +=1
                 t1 = time.time()
                 if use_mixup:
                     if use_ngraph:
@@ -438,7 +445,7 @@ def train(args):
                 lr = np.mean(np.array(lr))
                 train_time.append(period)
 
-                if batch_id % 10 == 0:
+                if True or batch_id % 10 == 0:
                     if use_mixup:
                         print("Pass {0}, trainbatch {1}, loss {2}, lr {3}, time {4}"
                               .format(pass_id, batch_id, "%.5f"%loss, "%.5f" %lr, "%2.2f sec" % period))
@@ -448,7 +455,6 @@ def train(args):
                               .format(pass_id, batch_id, "%.5f"%loss, "%.5f"%acc1, "%.5f"%acc5, "%.5f" %
                                       lr, "%2.2f sec" % period))
                     sys.stdout.flush()
-                batch_id += 1
         except fluid.core.EOFException:
             train_py_reader.reset()
 
@@ -459,11 +465,12 @@ def train(args):
         train_speed = np.array(train_time).mean() / (train_batch_size *
                                                      device_num)
 
-        test_py_reader.start()
+        #  test_py_reader.start()
 
         test_batch_id = 0
         try:
-            while True:
+            while False:
+                test_batch_id += 1
                 t1 = time.time()
                 loss, acc1, acc5 = exe.run(program=test_prog,
                                            fetch_list=test_fetch_list)
@@ -475,13 +482,12 @@ def train(args):
                 test_info[0].append(loss)
                 test_info[1].append(acc1)
                 test_info[2].append(acc5)
-                if test_batch_id % 10 == 0:
+                if True or test_batch_id % 10 == 0:
                     print("Pass {0},testbatch {1},loss {2}, \
                         acc1 {3},acc5 {4},time {5}"
                           .format(pass_id, test_batch_id, "%.5f"%loss,"%.5f"%acc1, "%.5f"%acc5,
                                   "%2.2f sec" % period))
                     sys.stdout.flush()
-                test_batch_id += 1
         except fluid.core.EOFException:
             test_py_reader.reset()
 

@@ -31,7 +31,7 @@ def rotate_image(img):
     return rotated
 
 
-def random_crop(img, size, settings, scale=None, ratio=None):
+def random_crop(img, settings, scale=None, ratio=None):
     """ random_crop """
     lower_scale = settings.lower_scale
     lower_ratio = settings.lower_ratio
@@ -59,10 +59,7 @@ def random_crop(img, size, settings, scale=None, ratio=None):
 
     img = img[i:i + h, j:j + w, :]
 
-    resized = cv2.resize(img, (size, size)
-                         #, interpolation=cv2.INTER_LANCZOS4
-                         )
-    return resized
+    return img
 
 
 def distort_color(img):
@@ -164,7 +161,9 @@ def process_image(sample,
         if rotate:
             img = rotate_image(img)
         if crop_size > 0:
-            img = random_crop(img, crop_size, settings)
+            img = random_crop(img, settings)
+            img = cv2.resize(
+                img, (crop_size, crop_size), interpolation=cv2.INTER_CUBIC)
         if color_jitter:
             img = distort_color(img)
         if np.random.randint(0, 2) == 1:
