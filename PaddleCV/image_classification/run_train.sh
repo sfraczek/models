@@ -6,9 +6,9 @@ export CPU_NUM=1
        # --total_images=1281167 \
        # --num_epochs=120 \
 time numactl --membind=0 --physcpubind=0-13 \
-python train2.py \
+python train.py \
        --model=ResNet50 \
-       --batch_size=8 \
+       --batch_size=16 \
        --class_dim=1000 \
        --image_shape=3,224,224 \
        --with_mem_opt=False \

@@ -3,7 +3,7 @@ export OMP_NUM_THREADS=14
 export KMP_AFFINITY=granularity=fine,compact,1,0
 export KMP_BLOCKTIME=1
 time numactl --membind=0 --physcpubind=0-13 \
-python eval_aeon2.py \
+python eval_aeon.py \
        --model=ResNet50 \
        --batch_size=8 \
        --iterations=3125 \

@@ -392,7 +392,7 @@ def train(args):
             lr = np.mean(np.array(lr))
             train_time.append(period)
 
-            if True or batch_id % 10 == 0:
+            if batch_id % 10 == 0:
                 print("Pass {0}, trainbatch {1}, loss {2}, \
                     acc1 {3}, acc5 {4}, lr {5}, time {6}"
                         .format(pass_id, batch_id, "%.5f"%loss, "%.5f"%acc1, "%.5f"%acc5, "%.5f" %
@@ -430,7 +430,7 @@ def train(args):
             test_info[0].append(loss)
             test_info[1].append(acc1)
             test_info[2].append(acc5)
-            if True or test_batch_id % 10 == 0:
+            if test_batch_id % 10 == 0:
                 print("Pass {0},testbatch {1},loss {2}, \
                     acc1 {3},acc5 {4},time {5}"
                         .format(pass_id, test_batch_id, "%.5f"%loss,"%.5f"%acc1, "%.5f"%acc5,
