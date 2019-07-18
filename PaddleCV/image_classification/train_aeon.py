@@ -26,7 +26,7 @@ add_arg = functools.partial(add_arguments, argparser=parser)
 
 # yapf: disable
 add_arg('batch_size',       int,   128,                  "Minibatch size.")
-add_arg('use_gpu',          bool,  False,                "Whether to use GPU or not.")
+add_arg('use_gpu',          bool,  True,                "Whether to use GPU or not.")
 add_arg('total_images',     int,   1281167,              "Training image number.")
 add_arg('num_epochs',       int,   2,                    "number of epochs.")
 add_arg('class_dim',        int,   1000,                 "Class number.")
@@ -337,10 +337,10 @@ def train(args):
 
     params = models.__dict__[args.model]().params
 
-    #  img_mean = np.array([0.485, 0.456, 0.406]).reshape((3, 1, 1))
-    #  img_std = np.array([0.229, 0.224, 0.225]).reshape((3, 1, 1))
-    #  img_mean = np.array(img_mean).reshape((3, 1, 1))
-    #  img_std = np.array(img_std).reshape((3, 1, 1))
+    img_mean = np.array([0.485, 0.456, 0.406]).reshape((3, 1, 1))
+    img_std = np.array([0.229, 0.224, 0.225]).reshape((3, 1, 1))
+    img_mean = np.array(img_mean).reshape((3, 1, 1))
+    img_std = np.array(img_std).reshape((3, 1, 1))
 
     for pass_id in range(params["num_epochs"]):
 
@@ -356,9 +356,9 @@ def train(args):
             images = batch['image']
             labels = batch['label']
 
-            #  images /= 255
-            #  images -= img_mean
-            #  images /= img_std
+            images /= 255
+            images -= img_mean
+            images /= img_std
             feed_data = zip(images, labels)
             t1 = time.time()
             if use_ngraph:
