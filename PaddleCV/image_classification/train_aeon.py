@@ -25,10 +25,10 @@ parser = argparse.ArgumentParser(description=__doc__)
 add_arg = functools.partial(add_arguments, argparser=parser)
 
 # yapf: disable
-add_arg('batch_size',       int,   256,                  "Minibatch size.")
-add_arg('use_gpu',          bool,  True,                 "Whether to use GPU or not.")
+add_arg('batch_size',       int,   128,                  "Minibatch size.")
+add_arg('use_gpu',          bool,  False,                "Whether to use GPU or not.")
 add_arg('total_images',     int,   1281167,              "Training image number.")
-add_arg('num_epochs',       int,   120,                  "number of epochs.")
+add_arg('num_epochs',       int,   2,                    "number of epochs.")
 add_arg('class_dim',        int,   1000,                 "Class number.")
 add_arg('image_shape',      str,   "3,224,224",          "input image size")
 add_arg('model_save_dir',   str,   "output",             "model save directory")
@@ -37,7 +37,7 @@ add_arg('pretrained_model', str,   None,                 "Whether to use pretrai
 add_arg('checkpoint',       str,   None,                 "Whether to resume checkpoint.")
 add_arg('lr',               float, 0.1,                  "set learning rate.")
 add_arg('lr_strategy',      str,   "piecewise_decay",    "Set the learning rate decay strategy.")
-add_arg('model',            str,   "SE_ResNeXt50_32x4d", "Set the network to use.")
+add_arg('model',            str,   "ResNet50",           "Set the network to use.")
 add_arg('data_dir',         str,   "./data/ILSVRC2012/",  "The ImageNet dataset root dir.")
 add_arg('fp16',             bool,  False,                "Enable half precision training with fp16." )
 add_arg('scale_loss',       float, 1.0,                  "Scale loss for fp16." )
@@ -337,10 +337,10 @@ def train(args):
 
     params = models.__dict__[args.model]().params
 
-    img_mean = np.array([0.485, 0.456, 0.406]).reshape((3, 1, 1))
-    img_std = np.array([0.229, 0.224, 0.225]).reshape((3, 1, 1))
-    img_mean = np.array(img_mean).reshape((3, 1, 1))
-    img_std = np.array(img_std).reshape((3, 1, 1))
+    #  img_mean = np.array([0.485, 0.456, 0.406]).reshape((3, 1, 1))
+    #  img_std = np.array([0.229, 0.224, 0.225]).reshape((3, 1, 1))
+    #  img_mean = np.array(img_mean).reshape((3, 1, 1))
+    #  img_std = np.array(img_std).reshape((3, 1, 1))
 
     for pass_id in range(params["num_epochs"]):
 
@@ -356,9 +356,9 @@ def train(args):
             images = batch['image']
             labels = batch['label']
 
-            images /= 255
-            images -= img_mean
-            images /= img_std
+            #  images /= 255
+            #  images -= img_mean
+            #  images /= img_std
             feed_data = zip(images, labels)
             t1 = time.time()
             if use_ngraph:
@@ -383,8 +383,17 @@ def train(args):
                 print("Pass {0}, trainbatch {1}, loss {2}, \
                     acc1 {3}, acc5 {4}, lr {5}, time {6}"
                         .format(pass_id, batch_id, "%.5f"%loss, "%.5f"%acc1, "%.5f"%acc5, "%.5f" %
-                                lr, "%2.2f sec" % period))
+                                lr, "%2.5f sec" % period))
                 sys.stdout.flush()
+
+        print("\n\n\n----READER SUMMARY----")
+        ls = params["learning_strategy"]
+        bs = ls["batch_size"]
+        print("Run with bs{}".format(bs))
+        print("Run for {} batches".format(batch_id))
+        print("Mean time per iteration: {}".format(np.mean(train_time[1:])))
+        print("Min: {}  Max: {}  Std:  {}".format(np.min(train_time[1:]), np.max(train_time[1:]), np.std(train_time[1:])))
+        print("FPS: {}".format(np.divide(bs, np.mean(train_time[1:]))))
 
         train_loss = np.array(train_info[0]).mean()
         train_acc1 = np.array(train_info[1]).mean()
@@ -420,8 +429,8 @@ def train(args):
             if test_batch_id % 10 == 0:
                 print("Pass {0},testbatch {1},loss {2}, \
                     acc1 {3},acc5 {4},time {5}"
-                        .format(pass_id, test_batch_id, "%.5f"%loss,"%.5f"%acc1, "%.5f"%acc5,
-                                "%2.2f sec" % period))
+                    .format(pass_id, test_batch_id, "%.5f"%loss,"%.5f"%acc1, "%.5f"%acc5,
+                        "%2.5f sec" % period))
                 sys.stdout.flush()
 
 
@@ -429,11 +438,11 @@ def train(args):
         test_acc1 = np.array(test_info[1]).mean()
         test_acc5 = np.array(test_info[2]).mean()
 
-        print("End pass {0}, train_loss {1}, train_acc1 {2}, train_acc5 {3}, "
-                "test_loss {4}, test_acc1 {5}, test_acc5 {6}".format(
-                    pass_id, "%.5f"%train_loss, "%.5f"%train_acc1, "%.5f"%train_acc5, "%.5f"%test_loss,
-                    "%.5f"%test_acc1, "%.5f"%test_acc5))
-        sys.stdout.flush()
+        #  print("End pass {0}, train_loss {1}, train_acc1 {2}, train_acc5 {3}, "
+        #          "test_loss {4}, test_acc1 {5}, test_acc5 {6}".format(
+        #              pass_id, "%.5f"%train_loss, "%.5f"%train_acc1, "%.5f"%train_acc5, "%.5f"%test_loss,
+        #              "%.5f"%test_acc1, "%.5f"%test_acc5))
+        #  sys.stdout.flush()
 
         model_path = os.path.join(model_save_dir + '/' + model_name,
                                   str(pass_id))

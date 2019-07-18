@@ -9,7 +9,7 @@ import json
 from aeon import DataLoader
 
 RANDOM_SEED = 1  # setting to 0 should yields random random seed (non deterministic)
-THREAD = 12
+THREAD = 14
 DATA_DIR = "data/ILSVRC2012"
 VAL_LIST_DIR = "data/ILSVRC2012/val-index.tsv"
 TRAIN_LIST_DIR = "data/ILSVRC2012/train-index.tsv"
