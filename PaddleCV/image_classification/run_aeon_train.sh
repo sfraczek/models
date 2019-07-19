@@ -7,4 +7,4 @@ export CPU_NUM=1
        # --total_images=1281167 \
        # --num_epochs=120 \
 time numactl --membind=0 --physcpubind=0-13 \
-python train_aeon.py 
+python train_aeon.py  2>&1 | tee test_of_train_aeon_log.txt

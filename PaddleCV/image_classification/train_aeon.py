@@ -349,6 +349,7 @@ def train(args):
         train_time = []
         batch_id = 0
         max_iter = math.floor(args.total_images/args.batch_size)
+        epoch_start_time = time.time()
         while batch_id < max_iter:
             batch_id += 1
             data = train_reader.next()
@@ -386,14 +387,14 @@ def train(args):
                                 lr, "%2.5f sec" % period))
                 sys.stdout.flush()
 
+        epoch_time = time.time() - epoch_start_time
         print("\n\n\n----READER SUMMARY----")
         ls = params["learning_strategy"]
         bs = ls["batch_size"]
         print("Run with bs{}".format(bs))
-        print("Run for {} batches".format(batch_id))
-        print("Mean time per iteration: {}".format(np.mean(train_time[1:])))
-        print("Min: {}  Max: {}  Std:  {}".format(np.min(train_time[1:]), np.max(train_time[1:]), np.std(train_time[1:])))
-        print("FPS: {}".format(np.divide(bs, np.mean(train_time[1:]))))
+        print("Run for {} batches".format(max_iter))
+        print("Mean time per iteration in epoch {}: {}".format(pass_id,epoch_time/max_iter))
+        print("FPS: {}".format(bs*max_iter/epoch_time))
 
         train_loss = np.array(train_info[0]).mean()
         train_acc1 = np.array(train_info[1]).mean()
@@ -438,11 +439,11 @@ def train(args):
         test_acc1 = np.array(test_info[1]).mean()
         test_acc5 = np.array(test_info[2]).mean()
 
-        #  print("End pass {0}, train_loss {1}, train_acc1 {2}, train_acc5 {3}, "
-        #          "test_loss {4}, test_acc1 {5}, test_acc5 {6}".format(
-        #              pass_id, "%.5f"%train_loss, "%.5f"%train_acc1, "%.5f"%train_acc5, "%.5f"%test_loss,
-        #              "%.5f"%test_acc1, "%.5f"%test_acc5))
-        #  sys.stdout.flush()
+        print("End pass {0}, train_loss {1}, train_acc1 {2}, train_acc5 {3}, "
+                "test_loss {4}, test_acc1 {5}, test_acc5 {6}".format(
+                    pass_id, "%.5f"%train_loss, "%.5f"%train_acc1, "%.5f"%train_acc5, "%.5f"%test_loss,
+                    "%.5f"%test_acc1, "%.5f"%test_acc5))
+        sys.stdout.flush()
 
         model_path = os.path.join(model_save_dir + '/' + model_name,
                                   str(pass_id))
