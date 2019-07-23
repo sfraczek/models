@@ -17,6 +17,6 @@ python train_aeon.py \
        --total_images=1281167 \
        --model_save_dir=output/ \
        --lr_strategy=piecewise_decay \
-       --num_epochs=1 \
+       --num_epochs=120 \
        --lr=0.1 \
-       --l2_decay=1e-4
+       --l2_decay=1e-4 2>&1 | tee training_aeon_normalized.txt

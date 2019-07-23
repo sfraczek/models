@@ -12,4 +12,4 @@ python eval.py \
        --image_shape=3,224,224 \
        --with_mem_opt=False \
        --use_gpu=True \
-       --pretrained_model=/mnt/drive/recovered/ResNet50_pretrained
+       --pretrained_model=/mnt/drive/recovered/ResNet50_pretrained 2>&1 | tee infer_ref.txt

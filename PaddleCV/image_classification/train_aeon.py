@@ -337,11 +337,6 @@ def train(args):
 
     params = models.__dict__[args.model]().params
 
-    img_mean = np.array([0.485, 0.456, 0.406]).reshape((3, 1, 1))
-    img_std = np.array([0.229, 0.224, 0.225]).reshape((3, 1, 1))
-    img_mean = np.array(img_mean).reshape((3, 1, 1))
-    img_std = np.array(img_std).reshape((3, 1, 1))
-
     for pass_id in range(params["num_epochs"]):
 
         train_info = [[], [], []]
@@ -356,9 +351,6 @@ def train(args):
             images = batch['image']
             labels = batch['label']
 
-            images /= 255
-            images -= img_mean
-            images /= img_std
             feed_data = zip(images, labels)
             t1 = time.time()
             if use_ngraph:
@@ -401,9 +393,6 @@ def train(args):
             images = batch['image']
             labels = batch['label']
 
-            images /= 255
-            images -= img_mean
-            images /= img_std
             feed_data = zip(images, labels)
 
             t1 = time.time()

@@ -5,10 +5,10 @@ export KMP_BLOCKTIME=1
 time numactl --membind=0 --physcpubind=0-13 \
 python eval_aeon.py \
        --model=ResNet50 \
-       --batch_size=8 \
+       --batch_size=16 \
        --iterations=3125 \
        --class_dim=1000 \
        --image_shape=3,224,224 \
-       --with_mem_opt=False \
+       --with_mem_opt=True \
        --use_gpu=True \
-       --pretrained_model=/mnt/drive/recovered/ResNet50_pretrained
+       --pretrained_model=/mnt/drive/recovered/ResNet50_pretrained 2>&1 | tee aeon_infer.txt

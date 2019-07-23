@@ -9,11 +9,13 @@ import json
 from aeon import DataLoader
 
 RANDOM_SEED = 1  # setting to 0 should yields random random seed (non deterministic)
-THREAD = 12
+THREAD = 14
 DATA_DIR = "data/ILSVRC2012"
 VAL_LIST_DIR = "data/ILSVRC2012/val-index.tsv"
 TRAIN_LIST_DIR = "data/ILSVRC2012/train-index.tsv"
 CACHE_DIR = "/mnt/drive/.aeon-cache/"
+MEAN = [0.485, 0.456, 0.406]
+STDDEV = [0.229, 0.224, 0.225]
 
 # dane wchodza rgb
 # co robi ten transpose 2,0,1
@@ -30,6 +32,8 @@ def train_reader(settings):
         "height": 224,
         "width": 224,
         "channels": 3,
+        "mean": MEAN,
+        "stddev": STDDEV,
         "output_type": "float",
         "channel_major": True,
         "bgr_to_rgb": True
@@ -76,6 +80,8 @@ def val_reader(settings):
         "height": 224,
         "width": 224,
         "channels": 3,
+        "mean": MEAN,
+        "stddev": STDDEV,
         "output_type": "float",
         "channel_major": True,
         "bgr_to_rgb": True
