@@ -1,10 +1,4 @@
 # coding: utf8
-import os
-import functools
-import numpy as np
-import paddle
-import io
-
 import json
 from aeon import DataLoader
 
@@ -66,7 +60,7 @@ def train_reader(settings):
     config['etl'] = [image_config, label_config]
     config['augmentation'] = [augmentation_config]
     config['batch_size'] = settings.batch_size
-    config['iteration_mode'] = "INFINITE"
+    config['iteration_mode'] = "ONCE"
 
     #  print(json.dumps(config, indent=4))
 
@@ -111,8 +105,41 @@ def val_reader(settings):
     config['etl'] = [image_config, label_config]
     config['augmentation'] = [augmentation_config]
     config['batch_size'] = settings.batch_size
+    config['iteration_mode'] = "ONCE"
 
     #  print(json.dumps(config, indent=4))
 
     dl = DataLoader(config)
     return dl
+
+
+def train(settings, batch_size, drop_last=False):
+    settings['batch_size'] = batch_size
+    reader = train_reader(settings)
+
+    def func():
+        while True:
+            data = reader.next()
+            #  batch = {k: v for k, v in data}
+            #  images = batch['image']
+            #  labels = batch['label']
+            #  yield zip(images, labels)
+            yield zip(data[0][1], data[1][1])
+
+    return func
+
+
+def val(settings, batch_size, drop_last=False):
+    settings['batch_size'] = batch_size
+    reader = val_reader(settings)
+
+    def func():
+        while True:
+            data = reader.next()
+            #  batch = {k: v for k, v in data}
+            #  images = batch['image']
+            #  labels = batch['label']
+            #  yield zip(images, labels)
+            yield zip(data[0][1], data[1][1])
+
+    return func

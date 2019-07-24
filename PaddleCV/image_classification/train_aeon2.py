@@ -9,7 +9,6 @@ import functools
 import math
 import paddle
 import paddle.fluid as fluid
-import paddle.dataset.flowers as flowers
 import reader_aeon as reader
 import argparse
 import functools
@@ -39,18 +38,18 @@ add_arg('checkpoint',       str,   None,                 "Whether to resume chec
 add_arg('lr',               float, 0.1,                  "set learning rate.")
 add_arg('lr_strategy',      str,   "piecewise_decay",    "Set the learning rate decay strategy.")
 add_arg('model',            str,   "SE_ResNeXt50_32x4d", "Set the network to use.")
-add_arg('enable_ce',        bool,  False,                "If set True, enable continuous evaluation job.")
 add_arg('data_dir',         str,   "./data/ILSVRC2012/",  "The ImageNet dataset root dir.")
 add_arg('fp16',             bool,  False,                "Enable half precision training with fp16." )
 add_arg('scale_loss',       float, 1.0,                  "Scale loss for fp16." )
 add_arg('l2_decay',         float, 1e-4,                 "L2_decay parameter.")
 add_arg('momentum_rate',    float, 0.9,                  "momentum_rate.")
+add_arg('use_label_smoothing',      bool,      False,        "Whether to use label_smoothing or not")
+add_arg('label_smoothing_epsilon',      float,     0.2,      "Set the label_smoothing_epsilon parameter")
 add_arg('lower_scale',      float,     0.08,      "Set the lower_scale in ramdom_crop")
 add_arg('lower_ratio',      float,     3./4.,      "Set the lower_ratio in ramdom_crop")
 add_arg('upper_ratio',      float,     4./3.,      "Set the upper_ratio in ramdom_crop")
 add_arg('resize_short_size',      int,     256,      "Set the resize_short_size")
-add_arg('use_mixup',      bool,      False,        "Whether to use mixup or not")
-add_arg('dummy_data',      bool,     False,      "Use dummy data reader.")
+add_arg('is_distill',       bool,  False,        "is distill or not")
 
 
 def optimizer_setting(params):
@@ -162,21 +161,24 @@ def optimizer_setting(params):
     return optimizer
 
 
-def calc_loss(label,class_dim,softmax_out):
-    loss = fluid.layers.cross_entropy(input=softmax_out, label=label)
+def calc_loss(epsilon,label,class_dim,softmax_out,use_label_smoothing):
+    if use_label_smoothing:
+        label_one_hot = fluid.layers.one_hot(input=label, depth=class_dim)
+        smooth_label = fluid.layers.label_smooth(label=label_one_hot, epsilon=epsilon, dtype="float32")
+        loss = fluid.layers.cross_entropy(input=softmax_out, label=smooth_label, soft_label=True)
+    else:
+        loss = fluid.layers.cross_entropy(input=softmax_out, label=label)
     return loss
 
 
-def net_config(image, model, args, is_train, label=0):
+def net_config(image, model, args, is_train, label=0, y_a=0, y_b=0, lam=0.0):
     model_list = [m for m in dir(models) if "__" not in m]
     assert args.model in model_list, "{} is not lists: {}".format(args.model,
                                                                   model_list)
     class_dim = args.class_dim
     model_name = args.model
-    if args.enable_ce:
-        assert model_name == "SE_ResNeXt50_32x4d"
-        model.params["dropout_seed"] = 100
-        class_dim = 102
+    use_label_smoothing = args.use_label_smoothing
+    epsilon = args.label_smoothing_epsilon
 
     if model_name == "GoogleNet":
         out0, out1, out2 = model.net(input=image, class_dim=class_dim)
@@ -191,23 +193,30 @@ def net_config(image, model, args, is_train, label=0):
         acc_top1 = fluid.layers.accuracy(input=out0, label=label, k=1)
         acc_top5 = fluid.layers.accuracy(input=out0, label=label, k=5)
 
-    out = model.net(input=image, class_dim=class_dim)
-    softmax_out = fluid.layers.softmax(out, use_cudnn=False)
-    if is_train:
-        cost = calc_loss(label,class_dim,softmax_out)
     else:
-        cost = fluid.layers.cross_entropy(input=softmax_out, label=label)
+        if not args.is_distill:
+            out = model.net(input=image, class_dim=class_dim)
+            softmax_out = fluid.layers.softmax(out, use_cudnn=False)
+            if is_train:
+                cost = calc_loss(epsilon,label,class_dim,softmax_out,use_label_smoothing)
+            else:
+                cost = fluid.layers.cross_entropy(input=softmax_out, label=label)
+        else:
+            out1, out2 = model.net(input=image, class_dim=args.class_dim)
+            softmax_out1, softmax_out = fluid.layers.softmax(out1), fluid.layers.softmax(out2)
+            smooth_out1 = fluid.layers.label_smooth(label=softmax_out1, epsilon=0.0, dtype="float32")
+            cost = fluid.layers.cross_entropy(input=softmax_out, label=smooth_out1, soft_label=True)
 
-    avg_cost = fluid.layers.mean(cost)
-    if args.scale_loss > 1:
-        avg_cost = fluid.layers.mean(x=cost) * float(args.scale_loss)
-    acc_top1 = fluid.layers.accuracy(input=softmax_out, label=label, k=1)
-    acc_top5 = fluid.layers.accuracy(input=softmax_out, label=label, k=5)
+        avg_cost = fluid.layers.mean(cost)
+        if args.scale_loss > 1:
+            avg_cost = fluid.layers.mean(x=cost) * float(args.scale_loss)
+        acc_top1 = fluid.layers.accuracy(input=softmax_out, label=label, k=1)
+        acc_top5 = fluid.layers.accuracy(input=softmax_out, label=label, k=5)
 
     return avg_cost, acc_top1, acc_top5
 
 
-def build_program(is_train, main_prog, startup_prog, args):
+def build_program(is_train, main_prog, startup_prog, args, place):
     image_shape = [int(m) for m in args.image_shape.split(",")]
     model_name = args.model
     model_list = [m for m in dir(models) if "__" not in m]
@@ -215,23 +224,18 @@ def build_program(is_train, main_prog, startup_prog, args):
                                                                      model_list)
     model = models.__dict__[model_name]()
     with fluid.program_guard(main_prog, startup_prog):
-        py_reader = fluid.layers.py_reader(
-            capacity=16,
-            shapes=[[-1] + image_shape, [-1, 1]],
-            lod_levels=[0, 0],
-            dtypes=["float32", "int64"],
-            use_double_buffer=True)
 
         with fluid.unique_name.guard():
-            image, label = fluid.layers.read_file(py_reader)
-            if args.fp16:
-                image = fluid.layers.cast(image, "float16")
+            image_shape = [int(m) for m in args.image_shape.split(",")]
+            image = fluid.layers.data(name='image', shape=image_shape, dtype='float32')
+            label = fluid.layers.data(name='label', shape=[1], dtype='int64')
+            feeder = fluid.DataFeeder(place=place, feed_list=[image, label])
+
             avg_cost, acc_top1, acc_top5 = net_config(image, model, args, label=label, is_train=is_train)
             avg_cost.persistable = True
             acc_top1.persistable = True
             acc_top5.persistable = True
-            build_program_out = [py_reader, avg_cost, acc_top1, acc_top5]
-
+            build_program_out = [feeder, avg_cost, acc_top1, acc_top5]
             if is_train:
                 params = model.params
                 params["total_images"] = args.total_images
@@ -243,15 +247,7 @@ def build_program(is_train, main_prog, startup_prog, args):
                 params["momentum_rate"] = args.momentum_rate
 
                 optimizer = optimizer_setting(params)
-                if args.fp16:
-                    params_grads = optimizer.backward(avg_cost)
-                    master_params_grads = create_master_params_grads(
-                        params_grads, main_prog, startup_prog, args.scale_loss)
-                    optimizer.apply_gradients(master_params_grads)
-                    master_param_to_train_param(master_params_grads,
-                                                params_grads, main_prog)
-                else:
-                    optimizer.minimize(avg_cost)
+                optimizer.minimize(avg_cost)
                 global_lr = optimizer._global_learning_rate()
                 build_program_out.append(global_lr)
 
@@ -278,31 +274,31 @@ def train(args):
     startup_prog = fluid.Program()
     train_prog = fluid.Program()
     test_prog = fluid.Program()
-    if args.enable_ce:
-        startup_prog.random_seed = 1000
-        train_prog.random_seed = 1000
+
+    place = fluid.CUDAPlace(0) if args.use_gpu else fluid.CPUPlace()
 
     b_out = build_program(
-            is_train=True,
-            main_prog=train_prog,
-            startup_prog=startup_prog,
-            args=args)
-    train_py_reader, train_cost, train_acc1, train_acc5, global_lr = b_out[0],b_out[1],b_out[2],b_out[3],b_out[4]
+                     is_train=True,
+                     main_prog=train_prog,
+                     startup_prog=startup_prog,
+                     args=args,
+                     place=place)
+    feeder, train_cost, train_acc1, train_acc5, global_lr = b_out[0],b_out[1],b_out[2],b_out[3], b_out[4]
     train_fetch_list = [train_cost.name, train_acc1.name, train_acc5.name, global_lr.name]
 
     b_out_test = build_program(
-            is_train=False,
-            main_prog=test_prog,
-            startup_prog=startup_prog,
-            args=args)
-    test_py_reader, test_cost, test_acc1, test_acc5 = b_out_test[0],b_out_test[1],b_out_test[2],b_out_test[3]
+                     is_train=False,
+                     main_prog=test_prog,
+                     startup_prog=startup_prog,
+                     args=args,
+                     place=place)
+    feeder, test_cost, test_acc1, test_acc5 = b_out_test[0],b_out_test[1],b_out_test[2], b_out_test[3]
     test_prog = test_prog.clone(for_test=True)
 
     if with_memory_optimization:
         fluid.memory_optimize(train_prog)
         fluid.memory_optimize(test_prog)
 
-    place = fluid.CUDAPlace(0) if args.use_gpu else fluid.CPUPlace()
     exe = fluid.Executor(place)
     exe.run(startup_prog)
 
@@ -324,23 +320,8 @@ def train(args):
     train_batch_size = args.batch_size / device_num
 
     test_batch_size = 16
-    if not args.enable_ce:
-        train_reader = reader.train(settings=args, batch_size=train_batch_size, drop_last=True)
-
-        test_reader = reader.val(settings=args, batch_size=test_batch_size)
-    else:
-        # use flowers dataset for CE and set use_xmap False to avoid disorder data
-        # but it is time consuming. For faster speed, need another dataset.
-        import random
-        random.seed(0)
-        np.random.seed(0)
-        train_reader = paddle.batch(
-        reader.train(settings=args), batch_size=args.batch_size)
-        test_reader = paddle.batch(
-        reader.val(settings=args), batch_size=args.batch_size)
-
-    train_py_reader.decorate_paddle_reader(train_reader)
-    test_py_reader.decorate_paddle_reader(test_reader)
+    train_reader = reader.train_reader(settings=args)
+    #  test_reader = reader.val_reader(settings=args)
 
     # use_ngraph is for CPU only, please refer to README_ngraph.md for details
     use_ngraph = os.getenv('FLAGS_use_ngraph')
@@ -355,83 +336,92 @@ def train(args):
     test_fetch_list = [test_cost.name, test_acc1.name, test_acc5.name]
 
     params = models.__dict__[args.model]().params
+
     for pass_id in range(params["num_epochs"]):
 
-        train_py_reader.start()
         train_info = [[], [], []]
         test_info = [[], [], []]
         train_time = []
         batch_id = 0
-        try:
-            while True:
-                t1 = time.time()
-                if use_ngraph:
-                    loss, acc1, acc5, lr = train_exe.run(train_prog, fetch_list=train_fetch_list)
-                else:
-                    loss, acc1, acc5, lr = train_exe.run(fetch_list=train_fetch_list)
+        max_iter = math.floor(args.total_images/args.batch_size)
+        while batch_id < max_iter:
+            batch_id += 1
+            data = train_reader.next()
+            batch = {k: v for k, v in data}
+            images = batch['image']
+            labels = batch['label']
 
-                t2 = time.time()
-                period = t2 - t1
-                acc1 = np.mean(np.array(acc1))
-                acc5 = np.mean(np.array(acc5))
-                train_info[1].append(acc1)
-                train_info[2].append(acc5)
+            feed_data = zip(images, labels)
+            t1 = time.time()
+            if use_ngraph:
+                loss, acc1, acc5, lr = train_exe.run(train_prog, fetch_list=train_fetch_list, feed=feeder.feed(feed_data))
+            else:
+                loss, acc1, acc5, lr = train_exe.run(fetch_list=train_fetch_list, feed=feeder.feed(feed_data))
 
+            acc1 = np.mean(np.array(acc1))
+            acc5 = np.mean(np.array(acc5))
+            train_info[1].append(acc1)
+            train_info[2].append(acc5)
 
-                loss = np.mean(np.array(loss))
-                train_info[0].append(loss)
-                lr = np.mean(np.array(lr))
-                train_time.append(period)
+            t2 = time.time()
+            period = t2 - t1
 
-                if batch_id % 10 == 0:
-                    img_per_sec = args.batch_size / period
-                    print("Pass {0}, trainbatch {1}, loss {2}, acc1 {3}, acc5 {4}, lr {5}, "
-                          "time {6}, img/s {7}".format(
-                            pass_id, batch_id, "%.5f"%loss, "%.5f"%acc1, "%.5f"%acc5, "%.5f" % lr,
-                            "%2.2f sec" % period, "%2.2f"%img_per_sec))
-                    sys.stdout.flush()
-                batch_id += 1
-        except fluid.core.EOFException:
-            train_py_reader.reset()
+            loss = np.mean(np.array(loss))
+            train_info[0].append(loss)
+            lr = np.mean(np.array(lr))
+            train_time.append(period)
+
+            if batch_id % 10 == 0:
+                print("Pass {0}, trainbatch {1}, loss {2}, \
+                    acc1 {3}, acc5 {4}, lr {5}, time {6}"
+                        .format(pass_id, batch_id, "%.5f"%loss, "%.5f"%acc1, "%.5f"%acc5, "%.5f" %
+                                lr, "%2.2f sec" % period))
+                sys.stdout.flush()
 
         train_loss = np.array(train_info[0]).mean()
         train_acc1 = np.array(train_info[1]).mean()
         train_acc5 = np.array(train_info[2]).mean()
-        train_speed = np.array(train_time).mean() / (train_batch_size * device_num)
-        test_py_reader.start()
+        train_speed = np.array(train_time).mean() / (train_batch_size *
+                                                     device_num)
+
 
         test_batch_id = 0
-        try:
-            while True:
-                t1 = time.time()
-                loss, acc1, acc5 = exe.run(program=test_prog,
-                                           fetch_list=test_fetch_list)
-                t2 = time.time()
-                period = t2 - t1
-                loss = np.mean(loss)
-                acc1 = np.mean(acc1)
-                acc5 = np.mean(acc5)
-                test_info[0].append(loss)
-                test_info[1].append(acc1)
-                test_info[2].append(acc5)
-                if test_batch_id % 10 == 0:
-                    print("Pass {0},testbatch {1},loss {2}, \
-                        acc1 {3},acc5 {4},time {5}"
-                          .format(pass_id, test_batch_id, "%.5f"%loss,"%.5f"%acc1, "%.5f"%acc5,
-                                  "%2.2f sec" % period))
-                    sys.stdout.flush()
-                test_batch_id += 1
-        except fluid.core.EOFException:
-            test_py_reader.reset()
+        while False:
+            test_batch_id += 1
+            data = test_reader.next()
+            batch = {k: v for k, v in data}
+            images = batch['image']
+            labels = batch['label']
+
+            feed_data = zip(images, labels)
+
+            t1 = time.time()
+            loss, acc1, acc5 = exe.run(program=test_prog,
+                                        fetch_list=test_fetch_list, feed=feeder.feed(feed_data))
+            t2 = time.time()
+            period = t2 - t1
+            loss = np.mean(loss)
+            acc1 = np.mean(acc1)
+            acc5 = np.mean(acc5)
+            test_info[0].append(loss)
+            test_info[1].append(acc1)
+            test_info[2].append(acc5)
+            if test_batch_id % 10 == 0:
+                print("Pass {0},testbatch {1},loss {2}, \
+                    acc1 {3},acc5 {4},time {5}"
+                        .format(pass_id, test_batch_id, "%.5f"%loss,"%.5f"%acc1, "%.5f"%acc5,
+                                "%2.2f sec" % period))
+                sys.stdout.flush()
+
 
         test_loss = np.array(test_info[0]).mean()
         test_acc1 = np.array(test_info[1]).mean()
         test_acc5 = np.array(test_info[2]).mean()
 
         print("End pass {0}, train_loss {1}, train_acc1 {2}, train_acc5 {3}, "
-              "test_loss {4}, test_acc1 {5}, test_acc5 {6}".format(
-                  pass_id, "%.5f"%train_loss, "%.5f"%train_acc1, "%.5f"%train_acc5, "%.5f"%test_loss,
-                  "%.5f"%test_acc1, "%.5f"%test_acc5))
+                "test_loss {4}, test_acc1 {5}, test_acc5 {6}".format(
+                    pass_id, "%.5f"%train_loss, "%.5f"%train_acc1, "%.5f"%train_acc5, "%.5f"%test_loss,
+                    "%.5f"%test_acc1, "%.5f"%test_acc5))
         sys.stdout.flush()
 
         model_path = os.path.join(model_save_dir + '/' + model_name,
@@ -441,29 +431,6 @@ def train(args):
         fluid.io.save_persistables(exe, model_path, main_program=train_prog)
 
         # This is for continuous evaluation only
-        if args.enable_ce and pass_id == args.num_epochs - 1:
-            if device_num == 1:
-                # Use the mean cost/acc for training
-                print("kpis	train_cost	%s" % train_loss)
-                print("kpis	train_acc_top1	%s" % train_acc1)
-                print("kpis	train_acc_top5	%s" % train_acc5)
-                # Use the mean cost/acc for testing
-                print("kpis	test_cost	%s" % test_loss)
-                print("kpis	test_acc_top1	%s" % test_acc1)
-                print("kpis	test_acc_top5	%s" % test_acc5)
-                print("kpis	train_speed	%s" % train_speed)
-            else:
-                # Use the mean cost/acc for training
-                print("kpis	train_cost_card%s	%s" % (device_num, train_loss))
-                print("kpis	train_acc_top1_card%s	%s" %
-                      (device_num, train_acc1))
-                print("kpis	train_acc_top5_card%s	%s" %
-                      (device_num, train_acc5))
-                # Use the mean cost/acc for testing
-                print("kpis	test_cost_card%s	%s" % (device_num, test_loss))
-                print("kpis	test_acc_top1_card%s	%s" % (device_num, test_acc1))
-                print("kpis	test_acc_top5_card%s	%s" % (device_num, test_acc5))
-                print("kpis	train_speed_card%s	%s" % (device_num, train_speed))
 
 
 def main():
