@@ -26,6 +26,10 @@ add_arg('with_mem_opt',     bool, True,                "Whether to use memory op
 add_arg('pretrained_model', str,  None,                "Whether to use pretrained model.")
 add_arg('model',            str,  "SE_ResNeXt50_32x4d", "Set the network to use.")
 add_arg('resize_short_size', int, 256,                "Set resize short size")
+add_arg('data_dir',            str, "./data/ILSVRC2012/", "The ImageNet dataset root dir.")
+add_arg('cache_dir',           str, "",                   "Place where aeon will store cache")
+add_arg('reader_thread_count', int, 12,                   "How many threads to allocate for reader")
+add_arg('random_seed',         int, 0,                    "Random seed. Choose 0 for non-deterministic.")
 # yapf: enable
 
 def eval(args):

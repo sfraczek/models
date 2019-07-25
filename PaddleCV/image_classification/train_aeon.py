@@ -49,7 +49,9 @@ add_arg('lower_scale',      float,     0.08,      "Set the lower_scale in ramdom
 add_arg('lower_ratio',      float,     3./4.,      "Set the lower_ratio in ramdom_crop")
 add_arg('upper_ratio',      float,     4./3.,      "Set the upper_ratio in ramdom_crop")
 add_arg('resize_short_size',      int,     256,      "Set the resize_short_size")
-add_arg('use_mixup',      bool,      False,        "Whether to use mixup or not")
+add_arg('cache_dir',           str, "",              "Place where aeon will store cache")
+add_arg('reader_thread_count', int, 12,              "How many threads to allocate for reader")
+add_arg('random_seed',         int, 0,               "Random seed. Choose 0 for non-deterministic.")
 
 def optimizer_setting(params):
     ls = params["learning_strategy"]

@@ -1,18 +1,15 @@
 # coding: utf8
 import json
 from aeon import DataLoader
+import os
 
-RANDOM_SEED = 1  # setting to 0 should yields random random seed (non deterministic)
-THREAD = 14
-DATA_DIR = "./data/ILSVRC2012"
-VAL_LIST_DIR = "data/ILSVRC2012/val-index.tsv"
-TRAIN_LIST_DIR = "data/ILSVRC2012/train-index.tsv"
-CACHE_DIR = "/mnt/drive/.aeon-cache/"
+VAL_LIST = "val-index.tsv"
+TRAIN_LIST = "train-index.tsv"
 MEAN = [0.485, 0.456, 0.406]
 STDDEV = [0.229, 0.224, 0.225]
 
 
-def common_config():
+def common_config(cache_dir, data_dir, thread_count, random_seed):
     image_config = {
         "type": "image",
         "height": 224,
@@ -28,10 +25,10 @@ def common_config():
     label_config = {"type": "label", "binary": False}
 
     config = dict()
-    config['random_seed'] = RANDOM_SEED
-    config['decode_thread_count'] = THREAD
-    config['manifest_root'] = DATA_DIR
-    config['cache_directory'] = CACHE_DIR
+    config['random_seed'] = random_seed
+    config['decode_thread_count'] = thread_count
+    config['manifest_root'] = data_dir
+    config['cache_directory'] = cache_dir
     config['etl'] = [image_config, label_config]
     config['iteration_mode'] = "ONCE"
 
@@ -39,7 +36,8 @@ def common_config():
 
 
 def train_reader(settings, batch_size):
-    config = common_config()
+    config = common_config(settings.cache_dir, settings.data_dir,
+                           settings.reader_thread_count, settings.random_seed)
 
     augmentation_config = {
         "random_seed": 1,
@@ -55,7 +53,7 @@ def train_reader(settings, batch_size):
 
     config["shuffle_enable"] = True
     config["shuffle_manifest"] = True
-    config['manifest_filename'] = TRAIN_LIST_DIR
+    config['manifest_filename'] = os.path.join(settings.data_dir, TRAIN_LIST)
     config['augmentation'] = [augmentation_config]
     config['batch_size'] = batch_size
 
@@ -66,7 +64,8 @@ def train_reader(settings, batch_size):
 
 
 def val_reader(settings, batch_size):
-    config = common_config()
+    config = common_config(settings.cache_dir, settings.data_dir,
+                           settings.reader_thread_count, settings.random_seed)
 
     augmentation_config = {
         "random_seed": 1,
@@ -80,7 +79,7 @@ def val_reader(settings, batch_size):
 
     config["shuffle_enable"] = False
     config["shuffle_manifest"] = False
-    config['manifest_filename'] = VAL_LIST_DIR
+    config['manifest_filename'] = os.path.join(settings.data_dir, VAL_LIST)
     config['augmentation'] = [augmentation_config]
     config['batch_size'] = batch_size
 

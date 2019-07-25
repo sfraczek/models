@@ -22,7 +22,10 @@
 #        --image_shape=3,224,224 \
 #        --with_mem_opt=True \
 #        --use_gpu=True \
-#        --pretrained_model=/mnt/drive/recovered/ResNet50_pretrained
+#        --pretrained_model=/mnt/drive/recovered/ResNet50_pretrained \
+#        --cache_dir=/mnt/drive/.aeon-cache/ \
+#        --reader_thread_count=14 \
+#        --random_seed=1
 
 ## REF TRAIN (LOOPING, PYREADER)
 # !!!!! FOR LOOPING CHOOSE train2.py AND FOR PYREADER CHOOSE train.py
@@ -61,7 +64,10 @@
 #        --lr_strategy=piecewise_decay \
 #        --num_epochs=120 \
 #        --lr=0.1 \
-#        --l2_decay=1e-4
+#        --l2_decay=1e-4 \
+#        --cache_dir=/mnt/drive/.aeon-cache/ \
+#        --reader_thread_count=14 \
+#        --random_seed=1
 
 
 
