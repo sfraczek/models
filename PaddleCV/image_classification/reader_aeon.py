@@ -4,23 +4,15 @@ from aeon import DataLoader
 
 RANDOM_SEED = 1  # setting to 0 should yields random random seed (non deterministic)
 THREAD = 14
-DATA_DIR = "data/ILSVRC2012"
+DATA_DIR = "./data/ILSVRC2012"
 VAL_LIST_DIR = "data/ILSVRC2012/val-index.tsv"
 TRAIN_LIST_DIR = "data/ILSVRC2012/train-index.tsv"
 CACHE_DIR = "/mnt/drive/.aeon-cache/"
 MEAN = [0.485, 0.456, 0.406]
 STDDEV = [0.229, 0.224, 0.225]
 
-# dane wchodza rgb
-# co robi ten transpose 2,0,1
-# bgr -> rgb
-# hwc -> chw
-# subtract mean div by stdev
-# img_mean = np.array([0.485, 0.456, 0.406]).reshape((3, 1, 1))
-# img_std = np.array([0.229, 0.224, 0.225]).reshape((3, 1, 1))
 
-
-def train_reader(settings):
+def common_config():
     image_config = {
         "type": "image",
         "height": 224,
@@ -34,6 +26,20 @@ def train_reader(settings):
     }
 
     label_config = {"type": "label", "binary": False}
+
+    config = dict()
+    config['random_seed'] = RANDOM_SEED
+    config['decode_thread_count'] = THREAD
+    config['manifest_root'] = DATA_DIR
+    config['cache_directory'] = CACHE_DIR
+    config['etl'] = [image_config, label_config]
+    config['iteration_mode'] = "ONCE"
+
+    return config
+
+
+def train_reader(settings, batch_size):
+    config = common_config()
 
     augmentation_config = {
         "random_seed": 1,
@@ -47,20 +53,11 @@ def train_reader(settings):
         "resize_short_size": 0,
     }
 
-    manifest_filename = TRAIN_LIST_DIR
-    manifest_root = DATA_DIR
-    cache_dir = CACHE_DIR
-    config = dict()
     config["shuffle_enable"] = True
     config["shuffle_manifest"] = True
-    config['decode_thread_count'] = THREAD
-    config['manifest_filename'] = manifest_filename
-    config['manifest_root'] = manifest_root
-    config['cache_directory'] = cache_dir
-    config['etl'] = [image_config, label_config]
+    config['manifest_filename'] = TRAIN_LIST_DIR
     config['augmentation'] = [augmentation_config]
-    config['batch_size'] = settings.batch_size
-    config['iteration_mode'] = "ONCE"
+    config['batch_size'] = batch_size
 
     #  print(json.dumps(config, indent=4))
 
@@ -68,20 +65,8 @@ def train_reader(settings):
     return dl
 
 
-def val_reader(settings):
-    image_config = {
-        "type": "image",
-        "height": 224,
-        "width": 224,
-        "channels": 3,
-        "mean": MEAN,
-        "stddev": STDDEV,
-        "output_type": "float",
-        "channel_major": True,
-        "bgr_to_rgb": True
-    }
-
-    label_config = {"type": "label", "binary": False}
+def val_reader(settings, batch_size):
+    config = common_config()
 
     augmentation_config = {
         "random_seed": 1,
@@ -93,19 +78,11 @@ def val_reader(settings):
         "resize_short_size": settings.resize_short_size,
     }
 
-    manifest_filename = VAL_LIST_DIR
-    manifest_root = DATA_DIR
-    cache_dir = CACHE_DIR
-
-    config = dict()
-    config['decode_thread_count'] = THREAD
-    config['manifest_filename'] = manifest_filename
-    config['manifest_root'] = manifest_root
-    config['cache_directory'] = cache_dir
-    config['etl'] = [image_config, label_config]
+    config["shuffle_enable"] = False
+    config["shuffle_manifest"] = False
+    config['manifest_filename'] = VAL_LIST_DIR
     config['augmentation'] = [augmentation_config]
-    config['batch_size'] = settings.batch_size
-    config['iteration_mode'] = "ONCE"
+    config['batch_size'] = batch_size
 
     #  print(json.dumps(config, indent=4))
 
@@ -114,32 +91,45 @@ def val_reader(settings):
 
 
 def train(settings, batch_size, drop_last=False):
-    settings['batch_size'] = batch_size
-    reader = train_reader(settings)
+    # Batch size check
+    batch_size = int(batch_size)
+    if batch_size <= 0:
+        raise ValueError(
+            "batch_size should be a positive integeral value, but got batch_size={}"
+            .format(batch_size))
+    reader = train_reader(settings, batch_size)
 
     def func():
-        while True:
-            data = reader.next()
-            #  batch = {k: v for k, v in data}
+        for tup in reader:
+            #  batch = {k: v for k, v in tup}
             #  images = batch['image']
             #  labels = batch['label']
             #  yield zip(images, labels)
-            yield zip(data[0][1], data[1][1])
+            if len(tup[0][1]) == batch_size:
+                yield zip(tup[0][1], tup[1][1])
+        if drop_last == False and len(tup[0][1]) != 0:
+            yield zip(tup[0][1], tup[1][1])
 
     return func
 
 
 def val(settings, batch_size, drop_last=False):
-    settings['batch_size'] = batch_size
-    reader = val_reader(settings)
+    batch_size = int(batch_size)
+    if batch_size <= 0:
+        raise ValueError(
+            "batch_size should be a positive integeral value, but got batch_size={}"
+            .format(batch_size))
+    reader = val_reader(settings, batch_size)
 
     def func():
-        while True:
-            data = reader.next()
-            #  batch = {k: v for k, v in data}
+        for tup in reader:
+            #  batch = {k: v for k, v in tup}
             #  images = batch['image']
             #  labels = batch['label']
             #  yield zip(images, labels)
-            yield zip(data[0][1], data[1][1])
+            if len(tup[0][1]) == batch_size:
+                yield zip(tup[0][1], tup[1][1])
+        if drop_last == False and len(tup[0][1]) != 0:
+            yield zip(tup[0][1], tup[1][1])
 
     return func

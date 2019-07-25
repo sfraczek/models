@@ -26,9 +26,7 @@ add_arg('with_mem_opt',     bool, True,                "Whether to use memory op
 add_arg('pretrained_model', str,  None,                "Whether to use pretrained model.")
 add_arg('model',            str,  "SE_ResNeXt50_32x4d", "Set the network to use.")
 add_arg('resize_short_size', int, 256,                "Set resize short size")
-add_arg('iterations',       int, 50000,                  "Quit after this many iterations")
 # yapf: enable
-
 
 def eval(args):
     # parameters from arguments
@@ -39,8 +37,8 @@ def eval(args):
     image_shape = [int(m) for m in args.image_shape.split(",")]
 
     model_list = [m for m in dir(models) if "__" not in m]
-    assert model_name in model_list, "{} is not in lists: {}".format(
-        args.model, model_list)
+    assert model_name in model_list, "{} is not in lists: {}".format(args.model,
+                                                                     model_list)
 
     image = fluid.layers.data(name='image', shape=image_shape, dtype='float32')
     label = fluid.layers.data(name='label', shape=[1], dtype='int64')
@@ -79,25 +77,19 @@ def eval(args):
     exe = fluid.Executor(place)
     exe.run(fluid.default_startup_program())
 
+
     fluid.io.load_persistables(exe, pretrained_model)
 
-    val_reader = paddle.batch(
-        reader.val(settings=args), batch_size=args.batch_size)
+    val_reader = paddle.batch(reader.val(settings=args), batch_size=args.batch_size)
     feeder = fluid.DataFeeder(place=place, feed_list=[image, label])
 
     test_info = [[], [], []]
     cnt = 0
-    batch_id = 0
-    for data in val_reader():
-        batch_id += 1
+    for batch_id, data in enumerate(val_reader()):
         t1 = time.time()
-        loss, acc1, acc5 = exe.run(
-            test_program, fetch_list=fetch_list, feed=feeder.feed(data))
-        #  with open('objs.txt','w') as f:
-        #      print(len(data))
-        #      np.set_printoptions(threshold=np.inf)
-        #      print(data[0])
-        #      return
+        loss, acc1, acc5 = exe.run(test_program,
+                                   fetch_list=fetch_list,
+                                   feed=feeder.feed(data))
         t2 = time.time()
         period = t2 - t1
         loss = np.mean(loss)
@@ -113,15 +105,13 @@ def eval(args):
                   "%.5f"%loss,"%.5f"%acc1, "%.5f"%acc5, \
                   "%2.2f sec" % period))
             sys.stdout.flush()
-        if batch_id == args.iterations:
-            break
 
     test_loss = np.sum(test_info[0]) / cnt
     test_acc1 = np.sum(test_info[1]) / cnt
     test_acc5 = np.sum(test_info[2]) / cnt
 
     print("Test_loss {0}, test_acc1 {1}, test_acc5 {2}".format(
-        "%.5f" % test_loss, "%.5f" % test_acc1, "%.5f" % test_acc5))
+        "%.5f"%test_loss, "%.5f"%test_acc1, "%.5f"%test_acc5))
     sys.stdout.flush()
 
 

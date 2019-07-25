@@ -5,7 +5,6 @@
 # python eval.py \
 #        --model=ResNet50 \
 #        --batch_size=16 \
-#        --iterations=3125 \
 #        --class_dim=1000 \
 #        --image_shape=3,224,224 \
 #        --with_mem_opt=True \
@@ -19,7 +18,6 @@
 # python eval_aeon.py \
 #        --model=ResNet50 \
 #        --batch_size=16 \
-#        --iterations=3125 \
 #        --class_dim=1000 \
 #        --image_shape=3,224,224 \
 #        --with_mem_opt=True \
@@ -31,7 +29,7 @@
 # export KMP_AFFINITY=granularity=fine,compact,1,0
 # export KMP_BLOCKTIME=1
 # time numactl --membind=0 --physcpubind=0-13 \
-# python train2.py \
+# python train.py \
 #        --model=ResNet50 \
 #        --batch_size=16 \
 #        --class_dim=1000 \
@@ -51,7 +49,7 @@
 # export KMP_AFFINITY=granularity=fine,compact,1,0
 # export KMP_BLOCKTIME=1
 # time numactl --membind=0 --physcpubind=0-13 \
-# python train_aeon2.py \
+# python train_aeon.py \
 #        --model=ResNet50 \
 #        --batch_size=16 \
 #        --class_dim=1000 \

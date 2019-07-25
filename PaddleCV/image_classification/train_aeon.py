@@ -50,8 +50,6 @@ add_arg('lower_ratio',      float,     3./4.,      "Set the lower_ratio in ramdo
 add_arg('upper_ratio',      float,     4./3.,      "Set the upper_ratio in ramdom_crop")
 add_arg('resize_short_size',      int,     256,      "Set the resize_short_size")
 add_arg('use_mixup',      bool,      False,        "Whether to use mixup or not")
-add_arg('dummy_data',      bool,     False,      "Use dummy data reader.")
-
 
 def optimizer_setting(params):
     ls = params["learning_strategy"]
@@ -161,7 +159,6 @@ def optimizer_setting(params):
 
     return optimizer
 
-
 def calc_loss(label,class_dim,softmax_out):
     loss = fluid.layers.cross_entropy(input=softmax_out, label=label)
     return loss
@@ -205,7 +202,6 @@ def net_config(image, model, args, is_train, label=0):
     acc_top5 = fluid.layers.accuracy(input=softmax_out, label=label, k=5)
 
     return avg_cost, acc_top1, acc_top5
-
 
 def build_program(is_train, main_prog, startup_prog, args):
     image_shape = [int(m) for m in args.image_shape.split(",")]
@@ -257,7 +253,6 @@ def build_program(is_train, main_prog, startup_prog, args):
 
     return build_program_out
 
-
 def get_device_num():
     visible_device = os.getenv('CUDA_VISIBLE_DEVICES')
     if visible_device:
@@ -265,7 +260,6 @@ def get_device_num():
     else:
         device_num = subprocess.check_output(['nvidia-smi','-L']).decode().count('\n')
     return device_num
-
 
 def train(args):
     # parameters from arguments
@@ -334,10 +328,8 @@ def train(args):
         import random
         random.seed(0)
         np.random.seed(0)
-        train_reader = paddle.batch(
-        reader.train(settings=args), batch_size=args.batch_size)
-        test_reader = paddle.batch(
-        reader.val(settings=args), batch_size=args.batch_size)
+        train_reader = reader.train(settings=args, batch_size=args.batch_size)
+        test_reader = reader.val(settings=args, batch_size=args.batch_size)
 
     train_py_reader.decorate_paddle_reader(train_reader)
     test_py_reader.decorate_paddle_reader(test_reader)
@@ -385,10 +377,10 @@ def train(args):
 
                 if batch_id % 10 == 0:
                     img_per_sec = args.batch_size / period
-                    print("Pass {0}, trainbatch {1}, loss {2}, acc1 {3}, acc5 {4}, lr {5}, "
-                          "time {6}, img/s {7}".format(
-                            pass_id, batch_id, "%.5f"%loss, "%.5f"%acc1, "%.5f"%acc5, "%.5f" % lr,
-                            "%2.2f sec" % period, "%2.2f"%img_per_sec))
+                    print("Pass {0}, trainbatch {1}, loss {2}, \
+                        acc1 {3}, acc5 {4}, lr {5}, time {6}, img/s {7}"
+                           .format(pass_id, batch_id, "%.5f"%loss, "%.5f"%acc1, "%.5f"%acc5, "%.5f" %
+                               lr, "%2.2f sec" % period, "%2.2f"%img_per_sec))
                     sys.stdout.flush()
                 batch_id += 1
         except fluid.core.EOFException:
@@ -397,7 +389,9 @@ def train(args):
         train_loss = np.array(train_info[0]).mean()
         train_acc1 = np.array(train_info[1]).mean()
         train_acc5 = np.array(train_info[2]).mean()
-        train_speed = np.array(train_time).mean() / (train_batch_size * device_num)
+        train_speed = np.array(train_time).mean() / (train_batch_size *
+                device_num)
+
         test_py_reader.start()
 
         test_batch_id = 0
@@ -427,6 +421,7 @@ def train(args):
         test_loss = np.array(test_info[0]).mean()
         test_acc1 = np.array(test_info[1]).mean()
         test_acc5 = np.array(test_info[2]).mean()
+
 
         print("End pass {0}, train_loss {1}, train_acc1 {2}, train_acc5 {3}, "
               "test_loss {4}, test_acc1 {5}, test_acc5 {6}".format(

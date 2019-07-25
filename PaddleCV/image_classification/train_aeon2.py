@@ -320,8 +320,8 @@ def train(args):
     train_batch_size = args.batch_size / device_num
 
     test_batch_size = 16
-    train_reader = reader.train_reader(settings=args)
-    #  test_reader = reader.val_reader(settings=args)
+    train_reader = reader.train(settings=args, batch_size=train_batch_size, drop_last=True)
+    #  test_reader = reader.val(settings=args, batch_size=test_batch_size)
 
     # use_ngraph is for CPU only, please refer to README_ngraph.md for details
     use_ngraph = os.getenv('FLAGS_use_ngraph')
@@ -336,7 +336,6 @@ def train(args):
     test_fetch_list = [test_cost.name, test_acc1.name, test_acc5.name]
 
     params = models.__dict__[args.model]().params
-
     for pass_id in range(params["num_epochs"]):
 
         train_info = [[], [], []]
@@ -344,19 +343,17 @@ def train(args):
         train_time = []
         batch_id = 0
         max_iter = math.floor(args.total_images/args.batch_size)
-        while batch_id < max_iter:
-            batch_id += 1
-            data = train_reader.next()
-            batch = {k: v for k, v in data}
-            images = batch['image']
-            labels = batch['label']
 
-            feed_data = zip(images, labels)
+        for batch_id, data in enumerate(train_reader()):
+            batch_id +=1
+            if batch_id > max_iter:
+                break
             t1 = time.time()
             if use_ngraph:
-                loss, acc1, acc5, lr = train_exe.run(train_prog, fetch_list=train_fetch_list, feed=feeder.feed(feed_data))
+                loss, acc1, acc5, lr = train_exe.run(train_prog, fetch_list=train_fetch_list, feed=feeder.feed(data))
             else:
-                loss, acc1, acc5, lr = train_exe.run(fetch_list=train_fetch_list, feed=feeder.feed(feed_data))
+                loss, acc1, acc5, lr = train_exe.run(fetch_list=train_fetch_list, feed=feeder.feed(data))
+
 
             acc1 = np.mean(np.array(acc1))
             acc5 = np.mean(np.array(acc5))
@@ -388,13 +385,6 @@ def train(args):
         test_batch_id = 0
         while False:
             test_batch_id += 1
-            data = test_reader.next()
-            batch = {k: v for k, v in data}
-            images = batch['image']
-            labels = batch['label']
-
-            feed_data = zip(images, labels)
-
             t1 = time.time()
             loss, acc1, acc5 = exe.run(program=test_prog,
                                         fetch_list=test_fetch_list, feed=feeder.feed(feed_data))

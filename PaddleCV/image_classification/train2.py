@@ -324,7 +324,7 @@ def train(args):
     test_batch_size = 16
     train_reader = paddle.batch(
         reader.train(settings=args), batch_size=train_batch_size, drop_last=True)
-    test_reader = paddle.batch(reader.val(settings=args), batch_size=test_batch_size)
+    #  test_reader = paddle.batch(reader.val(settings=args), batch_size=test_batch_size)
 
     # use_ngraph is for CPU only, please refer to README_ngraph.md for details
     use_ngraph = os.getenv('FLAGS_use_ngraph')
