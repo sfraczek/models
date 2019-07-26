@@ -316,7 +316,7 @@ def train(args):
 
     test_batch_size = 16
     train_reader = reader.train(settings=args, batch_size=train_batch_size, drop_last=True)
-    #  test_reader = reader.val(settings=args, batch_size=test_batch_size)
+    test_reader = reader.val(settings=args, batch_size=test_batch_size)
 
     # use_ngraph is for CPU only, please refer to README_ngraph.md for details
     use_ngraph = os.getenv('FLAGS_use_ngraph')
@@ -336,11 +336,8 @@ def train(args):
         train_info = [[], [], []]
         test_info = [[], [], []]
         train_time = []
-        max_iter = math.floor(args.total_images/args.batch_size)
 
         for batch_id, data in enumerate(train_reader()):
-            if batch_id > max_iter:
-                break
             t1 = time.time()
             if use_ngraph:
                 loss, acc1, acc5, lr = train_exe.run(train_prog, fetch_list=train_fetch_list, feed=feeder.feed(data))
@@ -377,10 +374,10 @@ def train(args):
 
         test_batch_id = 0
         try:
-            while True:
+            for batch_id, data in enumarate(test_reader()):
                 t1 = time.time()
                 loss, acc1, acc5 = exe.run(program=test_prog,
-                                            fetch_list=test_fetch_list, feed=feeder.feed(feed_data))
+                                            fetch_list=test_fetch_list, feed=feeder.feed(data))
                 t2 = time.time()
                 period = t2 - t1
                 loss = np.mean(loss)
