@@ -8,6 +8,7 @@ import numpy as np
 parser = argparse.ArgumentParser(description=__doc__)
 add_arg = functools.partial(add_arguments, argparser=parser)
 
+add_arg('mode', str, 'train', "Choose training or evaluation", choices=['train','eval'])
 add_arg('total_images', int, 1281167, "Training image number.")
 add_arg('data_dir', str, "./data/ILSVRC2012/", "The ImageNet dataset root dir.")
 add_arg('batch_size', int, 256, "Minibatch size.")
@@ -24,27 +25,34 @@ add_arg('drop_last', bool, True, "Skip last not batch if not full")
 
 
 def perf(args):
-    train_reader = reader.train(
-        settings=args, batch_size=args.batch_size, drop_last=args.drop_last)
+    if args.mode == 'train':
+        the_reader = reader.train(
+            settings=args, batch_size=args.batch_size, drop_last=args.drop_last)
+    else:
+        the_reader = reader.val(
+            settings=args, batch_size=args.batch_size, drop_last=args.drop_last)
 
-    if (args.drop_last):
+    if args.drop_last == True:
         max_iter = np.floor(args.total_images / args.batch_size)
     else:
         max_iter = np.ceil(args.total_images / args.batch_size)
 
     latency = np.ones((int)(args.num_epochs * max_iter), dtype=float)
     fps = np.ones((int)(args.num_epochs * max_iter), dtype=float)
+    index = 0
     for pass_id in range(args.num_epochs):
         print("Pass: {0}".format(pass_id))
         t1 = time.time()
-        for batch_id, data in enumerate(train_reader()):
+        for batch_id, data in enumerate(the_reader()):
             t2 = time.time()
-            latency[batch_id] = t2 - t1
+            latency[index] = t2 - t1
             t1 = t2
-            fps[batch_id] = args.batch_size / latency[batch_id]
+            fps[index] = args.batch_size / latency[index]
             if batch_id % 100 == 0:
                 print("Iteration {0}: latency: {1} s, fps: {2} img/s".format(
-                    batch_id, latency[batch_id], fps[batch_id]))
+                    batch_id, latency[index], fps[index]))
+            index += 1
+
     print("Mean latency: {0}, mean fps: {1}".format(
         latency.mean(), fps.mean()))
     print("Finished")

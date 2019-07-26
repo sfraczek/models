@@ -57,8 +57,6 @@ def train_reader(settings, batch_size):
     config['augmentation'] = [augmentation_config]
     config['batch_size'] = batch_size
 
-    #  print(json.dumps(config, indent=4))
-
     dl = DataLoader(config)
     return dl
 
@@ -83,8 +81,6 @@ def val_reader(settings, batch_size):
     config['augmentation'] = [augmentation_config]
     config['batch_size'] = batch_size
 
-    #  print(json.dumps(config, indent=4))
-
     dl = DataLoader(config)
     return dl
 
@@ -100,10 +96,7 @@ def train(settings, batch_size, drop_last=False):
 
     def func():
         for tup in reader:
-            #  batch = {k: v for k, v in tup}
-            #  images = batch['image']
-            #  labels = batch['label']
-            #  yield zip(images, labels)
+            # tup is (('image',...),('label',...)) where ... stand is data
             if len(tup[0][1]) == batch_size:
                 yield zip(tup[0][1], tup[1][1])
         if drop_last == False and len(tup[0][1]) != 0:
@@ -116,16 +109,13 @@ def val(settings, batch_size, drop_last=False):
     batch_size = int(batch_size)
     if batch_size <= 0:
         raise ValueError(
-            "batch_size should be a positive integeral value, but got batch_size={}"
+            "batch_size should be a positive integer value, but got batch_size={}"
             .format(batch_size))
     reader = val_reader(settings, batch_size)
 
     def func():
         for tup in reader:
-            #  batch = {k: v for k, v in tup}
-            #  images = batch['image']
-            #  labels = batch['label']
-            #  yield zip(images, labels)
+            # tup is (('image',...),('label',...)) where ... stand is data
             if len(tup[0][1]) == batch_size:
                 yield zip(tup[0][1], tup[1][1])
         if drop_last == False and len(tup[0][1]) != 0:

@@ -383,9 +383,11 @@ def train(args):
         random.seed(0)
         np.random.seed(0)
         train_reader = paddle.batch(
-        reader.train(settings=args), batch_size=args.batch_size)
+            flowers.train(use_xmap=False),
+            batch_size=train_batch_size,
+            drop_last=True)
         test_reader = paddle.batch(
-        reader.val(settings=args), batch_size=args.batch_size)
+            flowers.test(use_xmap=False), batch_size=test_batch_size)
 
     train_py_reader.decorate_paddle_reader(train_reader)
     test_py_reader.decorate_paddle_reader(test_reader)

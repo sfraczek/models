@@ -52,7 +52,6 @@ add_arg('use_mixup',      bool,      False,        "whether to use mixup or not"
 add_arg('mixup_alpha',      float,     0.2,      "set the mixup_alpha parameter")
 add_arg('is_distill',       bool,  False,        "is distill or not")
 
-
 def optimizer_setting(params):
     ls = params["learning_strategy"]
     l2_decay = params["l2_decay"]
@@ -161,7 +160,6 @@ def optimizer_setting(params):
 
     return optimizer
 
-
 def calc_loss(epsilon,label,class_dim,softmax_out,use_label_smoothing):
     if use_label_smoothing:
         label_one_hot = fluid.layers.one_hot(input=label, depth=class_dim)
@@ -200,6 +198,7 @@ def net_config(image, model, args, is_train, label=0, y_a=0, y_b=0, lam=0.0):
             softmax_out = fluid.layers.softmax(out, use_cudnn=False)
             if is_train:
                 cost = calc_loss(epsilon,label,class_dim,softmax_out,use_label_smoothing)
+                    
             else:
                 cost = fluid.layers.cross_entropy(input=softmax_out, label=label)
         else:
@@ -248,12 +247,19 @@ def build_program(is_train, main_prog, startup_prog, args, place):
                 params["momentum_rate"] = args.momentum_rate
 
                 optimizer = optimizer_setting(params)
-                optimizer.minimize(avg_cost)
-                global_lr = optimizer._global_learning_rate()
-                build_program_out.append(global_lr)
+                if args.fp16:
+                    params_grads = optimizer.backward(avg_cost)
+                    master_params_grads = create_master_params_grads(
+                        params_grads, main_prog, startup_prog, args.scale_loss)
+                    optimizer.apply_gradients(master_params_grads)
+                    master_param_to_train_param(master_params_grads,
+                                                params_grads, main_prog)
+                else:
+                    optimizer.minimize(avg_cost)
+                    global_lr = optimizer._global_learning_rate()
+                    build_program_out.append(global_lr)
 
     return build_program_out
-
 
 def get_device_num():
     visible_device = os.getenv('CUDA_VISIBLE_DEVICES')
@@ -262,7 +268,6 @@ def get_device_num():
     else:
         device_num = subprocess.check_output(['nvidia-smi','-L']).decode().count('\n')
     return device_num
-
 
 def train(args):
     # parameters from arguments
@@ -371,6 +376,8 @@ def train(args):
                         .format(pass_id, batch_id, "%.5f"%loss, "%.5f"%acc1, "%.5f"%acc5, "%.5f" %
                                 lr, "%2.2f sec" % period))
                 sys.stdout.flush()
+        except fluid.core.EOFException:
+            train_py_reader.reset()
 
         train_loss = np.array(train_info[0]).mean()
         train_acc1 = np.array(train_info[1]).mean()
@@ -379,11 +386,11 @@ def train(args):
                                                      device_num)
 
 
-        test_batch_id = 0
-        while False:
+        try:
+            for test_batch_id, data in enumarete(test_reader):
             t1 = time.time()
             loss, acc1, acc5 = exe.run(program=test_prog,
-                                    fetch_list=test_fetch_list, feed=feeder.feed(feed_data))
+                                    fetch_list=test_fetch_list, feed=feeder.feed(data))
             t2 = time.time()
             period = t2 - t1
             loss = np.mean(loss)
@@ -398,10 +405,8 @@ def train(args):
                         .format(pass_id, test_batch_id, "%.5f"%loss,"%.5f"%acc1, "%.5f"%acc5,
                                 "%2.2f sec" % period))
                 sys.stdout.flush()
-            test_batch_id += 1
         except fluid.core.EOFException:
             test_py_reader.reset()
-
 
         test_loss = np.array(test_info[0]).mean()
         test_acc1 = np.array(test_info[1]).mean()

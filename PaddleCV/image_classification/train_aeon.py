@@ -9,7 +9,6 @@ import functools
 import math
 import paddle
 import paddle.fluid as fluid
-import paddle.dataset.flowers as flowers
 import reader_aeon as reader
 import argparse
 import subprocess
@@ -38,12 +37,13 @@ add_arg('checkpoint',       str,   None,                 "Whether to resume chec
 add_arg('lr',               float, 0.1,                  "set learning rate.")
 add_arg('lr_strategy',      str,   "piecewise_decay",    "Set the learning rate decay strategy.")
 add_arg('model',            str,   "SE_ResNeXt50_32x4d", "Set the network to use.")
-add_arg('enable_ce',        bool,  False,                "If set True, enable continuous evaluation job.")
 add_arg('data_dir',         str,   "./data/ILSVRC2012/",  "The ImageNet dataset root dir.")
 add_arg('fp16',             bool,  False,                "Enable half precision training with fp16." )
 add_arg('scale_loss',       float, 1.0,                  "Scale loss for fp16." )
 add_arg('l2_decay',         float, 1e-4,                 "L2_decay parameter.")
 add_arg('momentum_rate',    float, 0.9,                  "momentum_rate.")
+add_arg('use_label_smoothing',      bool,      False,        "Whether to use label_smoothing or not")
+add_arg('label_smoothing_epsilon',      float,     0.2,      "Set the label_smoothing_epsilon parameter")
 add_arg('lower_scale',      float,     0.08,      "Set the lower_scale in ramdom_crop")
 add_arg('lower_ratio',      float,     3./4.,      "Set the lower_ratio in ramdom_crop")
 add_arg('upper_ratio',      float,     4./3.,      "Set the upper_ratio in ramdom_crop")
@@ -160,8 +160,13 @@ def optimizer_setting(params):
 
     return optimizer
 
-def calc_loss(label,class_dim,softmax_out):
-    loss = fluid.layers.cross_entropy(input=softmax_out, label=label)
+def calc_loss(epsilon,label,class_dim,softmax_out,use_label_smoothing):
+    if use_label_smoothing:
+        label_one_hot = fluid.layers.one_hot(input=label, depth=class_dim)
+        smooth_label = fluid.layers.label_smooth(label=label_one_hot, epsilon=epsilon, dtype="float32")
+        loss = fluid.layers.cross_entropy(input=softmax_out, label=smooth_label, soft_label=True)
+    else:
+        loss = fluid.layers.cross_entropy(input=softmax_out, label=label)
     return loss
 
 
@@ -171,10 +176,8 @@ def net_config(image, model, args, is_train, label=0):
                                                                   model_list)
     class_dim = args.class_dim
     model_name = args.model
-    if args.enable_ce:
-        assert model_name == "SE_ResNeXt50_32x4d"
-        model.params["dropout_seed"] = 100
-        class_dim = 102
+    use_label_smoothing = args.use_label_smoothing
+    epsilon = args.label_smoothing_epsilon
 
     if model_name == "GoogleNet":
         out0, out1, out2 = model.net(input=image, class_dim=class_dim)
@@ -193,7 +196,7 @@ def net_config(image, model, args, is_train, label=0):
         out = model.net(input=image, class_dim=class_dim)
         softmax_out = fluid.layers.softmax(out, use_cudnn=False)
         if is_train:
-            cost = calc_loss(label,class_dim,softmax_out)
+            cost = calc_loss(epsilon,label,class_dim,softmax_out,use_label_smoothing)
         else:
             cost = fluid.layers.cross_entropy(input=softmax_out, label=label)
 
@@ -320,18 +323,8 @@ def train(args):
     train_batch_size = args.batch_size / device_num
 
     test_batch_size = 16
-    if not args.enable_ce:
         train_reader = reader.train(settings=args, batch_size=train_batch_size, drop_last=True)
-
         test_reader = reader.val(settings=args, batch_size=test_batch_size)
-    else:
-        # use flowers dataset for CE and set use_xmap False to avoid disorder data
-        # but it is time consuming. For faster speed, need another dataset.
-        import random
-        random.seed(0)
-        np.random.seed(0)
-        train_reader = reader.train(settings=args, batch_size=args.batch_size)
-        test_reader = reader.val(settings=args, batch_size=args.batch_size)
 
     train_py_reader.decorate_paddle_reader(train_reader)
     test_py_reader.decorate_paddle_reader(test_reader)
