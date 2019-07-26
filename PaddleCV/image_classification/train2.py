@@ -11,7 +11,6 @@ import paddle
 import paddle.fluid as fluid
 import reader_cv2 as reader
 import argparse
-import functools
 import subprocess
 import utils
 import models
@@ -344,11 +343,9 @@ def train(args):
         train_info = [[], [], []]
         test_info = [[], [], []]
         train_time = []
-        batch_id = 0
         max_iter = math.floor(args.total_images/args.batch_size)
 
         for batch_id, data in enumerate(train_reader()):
-            batch_id +=1
             if batch_id > max_iter:
                 break
             t1 = time.time()
@@ -387,7 +384,6 @@ def train(args):
 
         test_batch_id = 0
         while False:
-            test_batch_id += 1
             t1 = time.time()
             loss, acc1, acc5 = exe.run(program=test_prog,
                                     fetch_list=test_fetch_list, feed=feeder.feed(feed_data))
@@ -405,6 +401,9 @@ def train(args):
                         .format(pass_id, test_batch_id, "%.5f"%loss,"%.5f"%acc1, "%.5f"%acc5,
                                 "%2.2f sec" % period))
                 sys.stdout.flush()
+            test_batch_id += 1
+        except fluid.core.EOFException:
+            test_py_reader.reset()
 
 
         test_loss = np.array(test_info[0]).mean()

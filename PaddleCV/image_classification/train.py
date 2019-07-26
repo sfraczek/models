@@ -12,7 +12,6 @@ import paddle.fluid as fluid
 import paddle.dataset.flowers as flowers
 import reader_cv2 as reader
 import argparse
-import functools
 import subprocess
 import utils
 import models

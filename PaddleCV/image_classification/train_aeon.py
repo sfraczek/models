@@ -12,7 +12,6 @@ import paddle.fluid as fluid
 import paddle.dataset.flowers as flowers
 import reader_aeon as reader
 import argparse
-import functools
 import subprocess
 import utils
 import models
@@ -190,18 +189,19 @@ def net_config(image, model, args, is_train, label=0):
         acc_top1 = fluid.layers.accuracy(input=out0, label=label, k=1)
         acc_top5 = fluid.layers.accuracy(input=out0, label=label, k=5)
 
-    out = model.net(input=image, class_dim=class_dim)
-    softmax_out = fluid.layers.softmax(out, use_cudnn=False)
-    if is_train:
-        cost = calc_loss(label,class_dim,softmax_out)
     else:
-        cost = fluid.layers.cross_entropy(input=softmax_out, label=label)
+        out = model.net(input=image, class_dim=class_dim)
+        softmax_out = fluid.layers.softmax(out, use_cudnn=False)
+        if is_train:
+            cost = calc_loss(label,class_dim,softmax_out)
+        else:
+            cost = fluid.layers.cross_entropy(input=softmax_out, label=label)
 
-    avg_cost = fluid.layers.mean(cost)
-    if args.scale_loss > 1:
-        avg_cost = fluid.layers.mean(x=cost) * float(args.scale_loss)
-    acc_top1 = fluid.layers.accuracy(input=softmax_out, label=label, k=1)
-    acc_top5 = fluid.layers.accuracy(input=softmax_out, label=label, k=5)
+        avg_cost = fluid.layers.mean(cost)
+        if args.scale_loss > 1:
+            avg_cost = fluid.layers.mean(x=cost) * float(args.scale_loss)
+        acc_top1 = fluid.layers.accuracy(input=softmax_out, label=label, k=1)
+        acc_top5 = fluid.layers.accuracy(input=softmax_out, label=label, k=5)
 
     return avg_cost, acc_top1, acc_top5
 

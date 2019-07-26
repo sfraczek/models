@@ -11,7 +11,6 @@ import paddle
 import paddle.fluid as fluid
 import reader_aeon as reader
 import argparse
-import functools
 import subprocess
 import utils
 import models
@@ -49,7 +48,9 @@ add_arg('lower_scale',      float,     0.08,      "Set the lower_scale in ramdom
 add_arg('lower_ratio',      float,     3./4.,      "Set the lower_ratio in ramdom_crop")
 add_arg('upper_ratio',      float,     4./3.,      "Set the upper_ratio in ramdom_crop")
 add_arg('resize_short_size',      int,     256,      "Set the resize_short_size")
-add_arg('is_distill',       bool,  False,        "is distill or not")
+add_arg('cache_dir',           str, "",              "Place where aeon will store cache")
+add_arg('reader_thread_count', int, 12,              "How many threads to allocate for reader")
+add_arg('random_seed',         int, 0,               "Random seed. Choose 0 for non-deterministic.")
 
 
 def optimizer_setting(params):
@@ -194,18 +195,12 @@ def net_config(image, model, args, is_train, label=0, y_a=0, y_b=0, lam=0.0):
         acc_top5 = fluid.layers.accuracy(input=out0, label=label, k=5)
 
     else:
-        if not args.is_distill:
-            out = model.net(input=image, class_dim=class_dim)
-            softmax_out = fluid.layers.softmax(out, use_cudnn=False)
-            if is_train:
-                cost = calc_loss(epsilon,label,class_dim,softmax_out,use_label_smoothing)
-            else:
-                cost = fluid.layers.cross_entropy(input=softmax_out, label=label)
+        out = model.net(input=image, class_dim=class_dim)
+        softmax_out = fluid.layers.softmax(out, use_cudnn=False)
+        if is_train:
+            cost = calc_loss(epsilon,label,class_dim,softmax_out,use_label_smoothing)
         else:
-            out1, out2 = model.net(input=image, class_dim=args.class_dim)
-            softmax_out1, softmax_out = fluid.layers.softmax(out1), fluid.layers.softmax(out2)
-            smooth_out1 = fluid.layers.label_smooth(label=softmax_out1, epsilon=0.0, dtype="float32")
-            cost = fluid.layers.cross_entropy(input=softmax_out, label=smooth_out1, soft_label=True)
+            cost = fluid.layers.cross_entropy(input=softmax_out, label=label)
 
         avg_cost = fluid.layers.mean(cost)
         if args.scale_loss > 1:
@@ -341,11 +336,9 @@ def train(args):
         train_info = [[], [], []]
         test_info = [[], [], []]
         train_time = []
-        batch_id = 0
         max_iter = math.floor(args.total_images/args.batch_size)
 
         for batch_id, data in enumerate(train_reader()):
-            batch_id +=1
             if batch_id > max_iter:
                 break
             t1 = time.time()
@@ -383,25 +376,28 @@ def train(args):
 
 
         test_batch_id = 0
-        while False:
-            test_batch_id += 1
-            t1 = time.time()
-            loss, acc1, acc5 = exe.run(program=test_prog,
-                                        fetch_list=test_fetch_list, feed=feeder.feed(feed_data))
-            t2 = time.time()
-            period = t2 - t1
-            loss = np.mean(loss)
-            acc1 = np.mean(acc1)
-            acc5 = np.mean(acc5)
-            test_info[0].append(loss)
-            test_info[1].append(acc1)
-            test_info[2].append(acc5)
-            if test_batch_id % 10 == 0:
-                print("Pass {0},testbatch {1},loss {2}, \
-                    acc1 {3},acc5 {4},time {5}"
-                        .format(pass_id, test_batch_id, "%.5f"%loss,"%.5f"%acc1, "%.5f"%acc5,
-                                "%2.2f sec" % period))
-                sys.stdout.flush()
+        try:
+            while True:
+                t1 = time.time()
+                loss, acc1, acc5 = exe.run(program=test_prog,
+                                            fetch_list=test_fetch_list, feed=feeder.feed(feed_data))
+                t2 = time.time()
+                period = t2 - t1
+                loss = np.mean(loss)
+                acc1 = np.mean(acc1)
+                acc5 = np.mean(acc5)
+                test_info[0].append(loss)
+                test_info[1].append(acc1)
+                test_info[2].append(acc5)
+                if test_batch_id % 10 == 0:
+                    print("Pass {0},testbatch {1},loss {2}, \
+                        acc1 {3},acc5 {4},time {5}"
+                            .format(pass_id, test_batch_id, "%.5f"%loss,"%.5f"%acc1, "%.5f"%acc5,
+                                    "%2.2f sec" % period))
+                    sys.stdout.flush()
+                test_batch_id += 1
+        except fluid.core.EOFException:
+            test_py_reader.reset()
 
 
         test_loss = np.array(test_info[0]).mean()
