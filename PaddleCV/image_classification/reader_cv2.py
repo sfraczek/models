@@ -13,7 +13,8 @@ np.random.seed(0)
 DATA_DIM = 224
 
 THREAD = 12
-BUF_SIZE = 102400
+# Make sure this buffer fits into RAM.
+BUF_SIZE = 30000
 
 DATA_DIR = './data/ILSVRC2012'
 
@@ -154,8 +155,6 @@ def process_image(sample,
 
     img_path = sample[0]
     img = cv2.imread(img_path)
-    #  import pdb
-    #  pdb.set_trace()
 
     if mode == 'train':
         if rotate:
@@ -192,7 +191,6 @@ def process_image(sample,
 def image_mapper(**kwargs):
     """ image_mapper """
     return functools.partial(process_image, **kwargs)
-
 
 def _reader_creator(settings,
                     file_list,
@@ -247,6 +245,53 @@ def _reader_creator(settings,
         image_mapper, reader, THREAD, BUF_SIZE, order=True)
     return reader
 
+def _dummy_reader(sample,
+                  mode):
+    if mode == 'train' or mode == 'val':
+        return (sample[0], sample[1])
+    elif mode == 'test':
+        return (sample[0])
+
+
+def create_dummy_reader(settings,
+                          file_list,
+                          mode,
+                          shuffle=False,
+                          data_dir=DATA_DIR,
+                          pass_id_as_seed=0):
+    img = np.random.rand(3, DATA_DIM, DATA_DIM).astype(np.float32)
+    label = np.random.randint(0, 1000)
+
+    def _reader():
+        with open(file_list) as flist:
+            full_lines = [line.strip() for line in flist]
+            if shuffle:
+                if pass_id_as_seed:
+                    np.random.seed(pass_id_as_seed)
+                np.random.shuffle(full_lines)
+            if mode == 'train' and os.getenv('PADDLE_TRAINING_ROLE'):
+                # distributed mode if the env var `PADDLE_TRAINING_ROLE` exits
+                trainer_id = int(os.getenv("PADDLE_TRAINER_ID", "0"))
+                trainer_count = int(os.getenv("PADDLE_TRAINERS_NUM", "1"))
+                per_node_lines = len(full_lines) // trainer_count
+                lines = full_lines[trainer_id * per_node_lines:
+                                   (trainer_id + 1) * per_node_lines]
+                print(
+                    "read images from %d, length: %d, lines length: %d, total: %d"
+                    % (trainer_id * per_node_lines, per_node_lines, len(lines),
+                       len(full_lines)))
+            else:
+                lines = full_lines
+
+            for line in lines:
+                if mode == 'train' or mode == 'val':
+                    yield (img, label)
+                elif mode == 'test':
+                    yield (img)
+
+    image_mapper = functools.partial(_dummy_reader, mode)
+    reader = paddle.reader.xmap_readers(image_mapper, _reader, THREAD, BUF_SIZE, order=True)
+    return reader
 
 def train(settings, data_dir=DATA_DIR, pass_id_as_seed=0):
     file_list = os.path.join(data_dir, 'train_list.txt')
@@ -260,8 +305,16 @@ def train(settings, data_dir=DATA_DIR, pass_id_as_seed=0):
         data_dir=data_dir,
         pass_id_as_seed=pass_id_as_seed,
     )
+
     if settings.use_mixup == True:
         reader = create_mixup_reader(settings, reader)
+    elif settings.dummy_data:
+        reader = create_dummy_reader(settings,
+                                    file_list,
+                                    'train',
+                                    shuffle=True,
+                                    data_dir=data_dir,
+                                    pass_id_as_seed=pass_id_as_seed)
     return reader
 
 
