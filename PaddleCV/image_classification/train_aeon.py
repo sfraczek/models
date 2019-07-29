@@ -282,18 +282,18 @@ def train(args):
         train_prog.random_seed = 1000
 
     b_out = build_program(
-            is_train=True,
-            main_prog=train_prog,
-            startup_prog=startup_prog,
-            args=args)
+                     is_train=True,
+                     main_prog=train_prog,
+                     startup_prog=startup_prog,
+                     args=args)
     train_py_reader, train_cost, train_acc1, train_acc5, global_lr = b_out[0],b_out[1],b_out[2],b_out[3],b_out[4]
     train_fetch_list = [train_cost.name, train_acc1.name, train_acc5.name, global_lr.name]
 
     b_out_test = build_program(
-            is_train=False,
-            main_prog=test_prog,
-            startup_prog=startup_prog,
-            args=args)
+                     is_train=False,
+                     main_prog=test_prog,
+                     startup_prog=startup_prog,
+                     args=args)
     test_py_reader, test_cost, test_acc1, test_acc5 = b_out_test[0],b_out_test[1],b_out_test[2],b_out_test[3]
     test_prog = test_prog.clone(for_test=True)
 
@@ -323,8 +323,8 @@ def train(args):
     train_batch_size = args.batch_size / device_num
 
     test_batch_size = 16
-        train_reader = reader.train(settings=args, batch_size=train_batch_size, drop_last=True)
-        test_reader = reader.val(settings=args, batch_size=test_batch_size)
+    train_reader = reader.train(settings=args, batch_size=train_batch_size, drop_last=True)
+    test_reader = reader.val(settings=args, batch_size=test_batch_size)
 
     train_py_reader.decorate_paddle_reader(train_reader)
     test_py_reader.decorate_paddle_reader(test_reader)
@@ -364,7 +364,6 @@ def train(args):
                 train_info[1].append(acc1)
                 train_info[2].append(acc5)
 
-
                 loss = np.mean(np.array(loss))
                 train_info[0].append(loss)
                 lr = np.mean(np.array(lr))
@@ -385,7 +384,7 @@ def train(args):
         train_acc1 = np.array(train_info[1]).mean()
         train_acc5 = np.array(train_info[2]).mean()
         train_speed = np.array(train_time).mean() / (train_batch_size *
-                device_num)
+                                                     device_num)
 
         test_py_reader.start()
 

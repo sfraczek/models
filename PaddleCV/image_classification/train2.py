@@ -215,7 +215,6 @@ def net_config(image, model, args, is_train, label=0, y_a=0, y_b=0, lam=0.0):
 
     return avg_cost, acc_top1, acc_top5
 
-
 def build_program(is_train, main_prog, startup_prog, args, place):
     image_shape = [int(m) for m in args.image_shape.split(",")]
     model_name = args.model
@@ -236,6 +235,7 @@ def build_program(is_train, main_prog, startup_prog, args, place):
             acc_top1.persistable = True
             acc_top5.persistable = True
             build_program_out = [feeder, avg_cost, acc_top1, acc_top5]
+
             if is_train:
                 params = model.params
                 params["total_images"] = args.total_images
@@ -256,8 +256,8 @@ def build_program(is_train, main_prog, startup_prog, args, place):
                                                 params_grads, main_prog)
                 else:
                     optimizer.minimize(avg_cost)
-                    global_lr = optimizer._global_learning_rate()
-                    build_program_out.append(global_lr)
+                global_lr = optimizer._global_learning_rate()
+                build_program_out.append(global_lr)
 
     return build_program_out
 
@@ -348,34 +348,34 @@ def train(args):
         train_info = [[], [], []]
         test_info = [[], [], []]
         train_time = []
+        try:
+            for batch_id, data in enumerate(train_reader()):
+                t1 = time.time()
+                if use_ngraph:
+                    loss, acc1, acc5, lr = train_exe.run(train_prog, fetch_list=train_fetch_list, feed=feeder.feed(data))
+                else:
+                    loss, acc1, acc5, lr = train_exe.run(fetch_list=train_fetch_list, feed=feeder.feed(data))
 
-        for batch_id, data in enumerate(train_reader()):
-            t1 = time.time()
-            if use_ngraph:
-                loss, acc1, acc5, lr = train_exe.run(train_prog, fetch_list=train_fetch_list, feed=feeder.feed(data))
-            else:
-                loss, acc1, acc5, lr = train_exe.run(fetch_list=train_fetch_list, feed=feeder.feed(data))
 
+                acc1 = np.mean(np.array(acc1))
+                acc5 = np.mean(np.array(acc5))
+                train_info[1].append(acc1)
+                train_info[2].append(acc5)
 
-            acc1 = np.mean(np.array(acc1))
-            acc5 = np.mean(np.array(acc5))
-            train_info[1].append(acc1)
-            train_info[2].append(acc5)
+                t2 = time.time()
+                period = t2 - t1
 
-            t2 = time.time()
-            period = t2 - t1
+                loss = np.mean(np.array(loss))
+                train_info[0].append(loss)
+                lr = np.mean(np.array(lr))
+                train_time.append(period)
 
-            loss = np.mean(np.array(loss))
-            train_info[0].append(loss)
-            lr = np.mean(np.array(lr))
-            train_time.append(period)
-
-            if batch_id % 10 == 0:
-                print("Pass {0}, trainbatch {1}, loss {2}, \
-                    acc1 {3}, acc5 {4}, lr {5}, time {6}"
-                        .format(pass_id, batch_id, "%.5f"%loss, "%.5f"%acc1, "%.5f"%acc5, "%.5f" %
-                                lr, "%2.2f sec" % period))
-                sys.stdout.flush()
+                if batch_id % 10 == 0:
+                    print("Pass {0}, trainbatch {1}, loss {2}, \
+                        acc1 {3}, acc5 {4}, lr {5}, time {6}"
+                            .format(pass_id, batch_id, "%.5f"%loss, "%.5f"%acc1, "%.5f"%acc5, "%.5f" %
+                                    lr, "%2.2f sec" % period))
+                    sys.stdout.flush()
         except fluid.core.EOFException:
             train_py_reader.reset()
 
@@ -388,23 +388,23 @@ def train(args):
 
         try:
             for test_batch_id, data in enumarete(test_reader):
-            t1 = time.time()
-            loss, acc1, acc5 = exe.run(program=test_prog,
-                                    fetch_list=test_fetch_list, feed=feeder.feed(data))
-            t2 = time.time()
-            period = t2 - t1
-            loss = np.mean(loss)
-            acc1 = np.mean(acc1)
-            acc5 = np.mean(acc5)
-            test_info[0].append(loss)
-            test_info[1].append(acc1)
-            test_info[2].append(acc5)
-            if test_batch_id % 10 == 0:
-                print("Pass {0},testbatch {1},loss {2}, \
-                    acc1 {3},acc5 {4},time {5}"
-                        .format(pass_id, test_batch_id, "%.5f"%loss,"%.5f"%acc1, "%.5f"%acc5,
-                                "%2.2f sec" % period))
-                sys.stdout.flush()
+                t1 = time.time()
+                loss, acc1, acc5 = exe.run(program=test_prog,
+                                           fetch_list=test_fetch_list, feed=feeder.feed(data))
+                t2 = time.time()
+                period = t2 - t1
+                loss = np.mean(loss)
+                acc1 = np.mean(acc1)
+                acc5 = np.mean(acc5)
+                test_info[0].append(loss)
+                test_info[1].append(acc1)
+                test_info[2].append(acc5)
+                if test_batch_id % 10 == 0:
+                    print("Pass {0},testbatch {1},loss {2}, \
+                        acc1 {3},acc5 {4},time {5}"
+                          .format(pass_id, test_batch_id, "%.5f"%loss,"%.5f"%acc1, "%.5f"%acc5,
+                                  "%2.2f sec" % period))
+                    sys.stdout.flush()
         except fluid.core.EOFException:
             test_py_reader.reset()
 
