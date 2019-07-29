@@ -12,14 +12,13 @@ np.random.seed(0)
 
 DATA_DIM = 224
 
-THREAD = 12
+THREAD = 8
 BUF_SIZE = 102400
 
 DATA_DIR = './data/ILSVRC2012'
 
 img_mean = np.array([0.485, 0.456, 0.406]).reshape((3, 1, 1))
 img_std = np.array([0.229, 0.224, 0.225]).reshape((3, 1, 1))
-
 
 def rotate_image(img):
     """ rotate_image """
@@ -30,7 +29,6 @@ def rotate_image(img):
     rotated = cv2.warpAffine(img, M, (w, h))
     return rotated
 
-
 def random_crop(img, settings, scale=None, ratio=None):
     """ random_crop """
     lower_scale = settings.lower_scale
@@ -38,6 +36,7 @@ def random_crop(img, settings, scale=None, ratio=None):
     upper_ratio = settings.upper_ratio
     scale = [lower_scale, 1.0] if scale is None else scale
     ratio = [lower_ratio, upper_ratio] if ratio is None else ratio
+
 
     aspect_ratio = math.sqrt(np.random.uniform(*ratio))
     w = 1. * aspect_ratio
@@ -49,8 +48,8 @@ def random_crop(img, settings, scale=None, ratio=None):
     scale_max = min(scale[1], bound)
     scale_min = min(scale[0], bound)
 
-    target_area = img.shape[0] * img.shape[1] * np.random.uniform(
-        scale_min, scale_max)
+    target_area = img.shape[0] * img.shape[1] * np.random.uniform(scale_min,
+                                                                  scale_max)
     target_size = math.sqrt(target_area)
     w = int(target_size * w)
     h = int(target_size * h)
@@ -61,10 +60,8 @@ def random_crop(img, settings, scale=None, ratio=None):
 
     return img
 
-
 def distort_color(img):
     return img
-
 
 def resize_short(img, target_size):
     """ resize_short """
@@ -74,7 +71,6 @@ def resize_short(img, target_size):
     resized = cv2.resize(
         img, (resized_width, resized_height), interpolation=cv2.INTER_CUBIC)
     return resized
-
 
 def crop_image(img, target_size, center):
     """ crop_image """
@@ -91,7 +87,6 @@ def crop_image(img, target_size, center):
     img = img[h_start:h_end, w_start:w_end, :]
     return img
 
-
 def create_mixup_reader(settings, rd):
     class context:
         tmp_mix = []
@@ -101,7 +96,6 @@ def create_mixup_reader(settings, rd):
 
     batch_size = settings.batch_size
     alpha = settings.mixup_alpha
-
     def fetch_data():
 
         data_list = []
@@ -109,7 +103,7 @@ def create_mixup_reader(settings, rd):
             data_list.append(item)
             if i % batch_size == batch_size - 1:
                 yield data_list
-                data_list = []
+                data_list =[]
 
     def mixup_data():
 
@@ -120,15 +114,12 @@ def create_mixup_reader(settings, rd):
                 lam = 1.
             l1 = np.array(data_list)
             l2 = np.random.permutation(l1)
-            mixed_l = [
-                l1[i][0] * lam + (1 - lam) * l2[i][0] for i in range(len(l1))
-            ]
+            mixed_l = [l1[i][0] * lam + (1 - lam) * l2[i][0] for i in range(len(l1))]
             yield mixed_l, l1, l2, lam
 
     def mixup_reader():
 
-        for context.tmp_mix, context.tmp_l1, context.tmp_l2, context.tmp_lam in mixup_data(
-        ):
+        for context.tmp_mix, context.tmp_l1, context.tmp_l2, context.tmp_lam in mixup_data():
             for i in range(len(context.tmp_mix)):
                 mixed_l = context.tmp_mix[i]
                 l1 = context.tmp_l1[i]
@@ -138,8 +129,8 @@ def create_mixup_reader(settings, rd):
 
     return mixup_reader
 
-
-def process_image(sample,
+def process_image(
+                  sample,
                   settings,
                   mode,
                   color_jitter,
@@ -154,8 +145,6 @@ def process_image(sample,
 
     img_path = sample[0]
     img = cv2.imread(img_path)
-    #  import pdb
-    #  pdb.set_trace()
 
     if mode == 'train':
         if rotate:
@@ -175,8 +164,6 @@ def process_image(sample,
 
             img = crop_image(img, target_size=crop_size, center=True)
 
-    #  img = img.astype('float32').transpose(2,0,1)
-    # to rgb and to chw and to float
     img = img[:, :, ::-1].astype('float32').transpose((2, 0, 1)) / 255
     img_mean = np.array(mean).reshape((3, 1, 1))
     img_std = np.array(std).reshape((3, 1, 1))
@@ -214,8 +201,8 @@ def _reader_creator(settings,
                 trainer_id = int(os.getenv("PADDLE_TRAINER_ID", "0"))
                 trainer_count = int(os.getenv("PADDLE_TRAINERS_NUM", "1"))
                 per_node_lines = len(full_lines) // trainer_count
-                lines = full_lines[trainer_id * per_node_lines:
-                                   (trainer_id + 1) * per_node_lines]
+                lines = full_lines[trainer_id * per_node_lines:(trainer_id + 1)
+                                   * per_node_lines]
                 print(
                     "read images from %d, length: %d, lines length: %d, total: %d"
                     % (trainer_id * per_node_lines, per_node_lines, len(lines),
@@ -223,7 +210,6 @@ def _reader_creator(settings,
             else:
                 lines = full_lines
 
-            #  data_dir="/mnt/drive/data/i1k/i1k-extracted/"
             for line in lines:
                 if mode == 'train' or mode == 'val':
                     img_path, label = line.split()
@@ -234,7 +220,6 @@ def _reader_creator(settings,
                     img_path = os.path.join(data_dir, img_path)
 
                     yield [img_path]
-
     crop_size = int(settings.image_shape.split(",")[2])
     image_mapper = functools.partial(
         process_image,
@@ -244,9 +229,8 @@ def _reader_creator(settings,
         rotate=rotate,
         crop_size=crop_size)
     reader = paddle.reader.xmap_readers(
-        image_mapper, reader, THREAD, BUF_SIZE, order=True)
+        image_mapper, reader, THREAD, BUF_SIZE, order=False)
     return reader
-
 
 def train(settings, data_dir=DATA_DIR, pass_id_as_seed=0):
     file_list = os.path.join(data_dir, 'train_list.txt')
@@ -264,14 +248,13 @@ def train(settings, data_dir=DATA_DIR, pass_id_as_seed=0):
         reader = create_mixup_reader(settings, reader)
     return reader
 
-
-def val(settings, data_dir=DATA_DIR):
+def val(settings,data_dir=DATA_DIR):
     file_list = os.path.join(data_dir, 'val_list.txt')
-    return _reader_creator(
-        settings, file_list, 'val', shuffle=False, data_dir=data_dir)
+    return _reader_creator(settings ,file_list, 'val', shuffle=False, 
+            data_dir=data_dir)
 
 
-def test(settings, data_dir=DATA_DIR):
+def test(settings,data_dir=DATA_DIR):
     file_list = os.path.join(data_dir, 'val_list.txt')
-    return _reader_creator(
-        settings, file_list, 'test', shuffle=False, data_dir=data_dir)
+    return _reader_creator(settings, file_list, 'test', shuffle=False,
+            data_dir=data_dir)
