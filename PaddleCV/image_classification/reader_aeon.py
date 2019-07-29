@@ -1,19 +1,14 @@
 # coding: utf8
 import os
-import functools
-import numpy as np
-import paddle
-import io
+# import json
 
-import json
 from aeon import DataLoader
 
 RANDOM_SEED = 1  # setting to 0 should yields random random seed (non deterministic)
 THREAD = 12
-DATA_DIR = "data/ILSVRC2012"
-VAL_LIST_DIR = "data/ILSVRC2012/val-index.tsv"
-TRAIN_LIST_DIR = "data/ILSVRC2012/train-index.tsv"
-CACHE_DIR = "/mnt/drive/.aeon-cache/"
+VAL_LIST_FILENAME = "val-index.tsv"
+TRAIN_LIST_FILENAME = "train-index.tsv"
+CACHE_DIR = ".aeon-cache/"
 
 # dane wchodza rgb
 # co robi ten transpose 2,0,1
@@ -49,8 +44,8 @@ def train_reader(settings):
         "resize_short_size": 0,
     }
 
-    manifest_filename = TRAIN_LIST_DIR
-    manifest_root = DATA_DIR
+    manifest_root = settings.data_dir
+    manifest_filename = os.path.join(manifest_root, TRAIN_LIST_FILENAME)
     cache_dir = CACHE_DIR
     config = dict()
     config["shuffle_enable"] = True
@@ -93,8 +88,8 @@ def val_reader(settings):
         "resize_short_size": settings.resize_short_size,
     }
 
-    manifest_filename = VAL_LIST_DIR
-    manifest_root = DATA_DIR
+    manifest_root = settings.data_dir
+    manifest_filename = os.path.join(manifest_root, VAL_LIST_FILENAME)
     cache_dir = CACHE_DIR
 
     config = dict()
