@@ -85,6 +85,7 @@ add_arg('resize_short_size',      int,     256,      "Set the resize_short_size"
 add_arg('use_mixup',      bool,      False,        "Whether to use mixup or not")
 add_arg('mixup_alpha',      float,     0.2,      "Set the mixup_alpha parameter")
 add_arg('is_distill',       bool,  False,        "is distill or not")
+add_arg('dummy_data',      bool,     False,      "Use dummy data reader.")
 
 def optimizer_setting(params):
     ls = params["learning_strategy"]
@@ -206,8 +207,7 @@ def calc_loss(epsilon,label,class_dim,softmax_out,use_label_smoothing):
 
 def net_config(image, model, args, is_train, label=0, y_a=0, y_b=0, lam=0.0):
     model_list = [m for m in dir(models) if "__" not in m]
-    assert args.model in model_list, "{} is not lists: {}".format(args.model,
-                                                                  model_list)
+    assert args.model in model_list, "{} is not lists: {}".format(args.model, model_list)
     class_dim = args.class_dim
     model_name = args.model
     use_mixup = args.use_mixup
@@ -407,8 +407,11 @@ def train(args):
     test_batch_size = 16
     if not args.enable_ce:
         train_reader = paddle.batch(
-            reader.train(settings=args), batch_size=train_batch_size, drop_last=True)
-        test_reader = paddle.batch(reader.val(settings=args), batch_size=test_batch_size)
+            reader.train(settings=args, data_dir=args.data_dir),
+                         batch_size=train_batch_size,
+                         drop_last=True)
+        test_reader = paddle.batch(reader.val(settings=args, data_dir=args.data_dir),
+                                   batch_size=test_batch_size)
     else:
         # use flowers dataset for CE and set use_xmap False to avoid disorder data
         # but it is time consuming. For faster speed, need another dataset.
@@ -465,18 +468,20 @@ def train(args):
                         loss, lr = train_exe.run(train_prog, fetch_list=train_fetch_list)
                     else:
                         loss, lr = train_exe.run(fetch_list=train_fetch_list)
+
+                    t2 = time.time()
                 else:
                     if use_ngraph:
                         loss, acc1, acc5, lr = train_exe.run(train_prog, fetch_list=train_fetch_list)
                     else:
                         loss, acc1, acc5, lr = train_exe.run(fetch_list=train_fetch_list)
 
+                    t2 = time.time()
                     acc1 = np.mean(np.array(acc1))
                     acc5 = np.mean(np.array(acc5))
                     train_info[1].append(acc1)
                     train_info[2].append(acc5)
 
-                t2 = time.time()
                 period = t2 - t1
                 time_record.append(period)
 
@@ -488,14 +493,17 @@ def train(args):
                 if batch_id % 10 == 0:
                     period = np.mean(time_record)
                     time_record=[]
+                    img_per_sec = args.batch_size / period
+
                     if use_mixup:
-                        print("Pass {0}, trainbatch {1}, loss {2}, lr {3}, time {4}"
-                              .format(pass_id, batch_id, "%.5f"%loss, "%.5f" %lr, "%2.2f sec" % period))
+                        print("Pass {0}, trainbatch {1}, loss {2}, lr {3}, time {4}, img/s {}"
+                              .format(pass_id, batch_id, "%.5f"%loss, "%.5f" % lr,
+                                      "%2.2f sec" % period, "%2.2f" % img_per_sec))
                     else:
-                        print("Pass {0}, trainbatch {1}, loss {2}, \
-                            acc1 {3}, acc5 {4}, lr {5}, time {6}"
-                              .format(pass_id, batch_id, "%.5f"%loss, "%.5f"%acc1, "%.5f"%acc5, "%.5f" %
-                                      lr, "%2.2f sec" % period))
+                        print("Pass {0}, trainbatch {1}, loss {2}, acc1 {3}, acc5 {4}, lr {5}, "
+                              " time {6}, img/s {7}".format(
+                                pass_id, batch_id, "%.5f"%loss, "%.5f"%acc1, "%.5f"%acc5,
+                                "%.5f" % lr, "%2.2f sec" % period, "%2.2f" % img_per_sec))
                     sys.stdout.flush()
                 batch_id += 1
         except fluid.core.EOFException:
@@ -505,9 +513,7 @@ def train(args):
         if not use_mixup:
             train_acc1 = np.array(train_info[1]).mean()
             train_acc5 = np.array(train_info[2]).mean()
-        train_speed = np.array(train_time).mean() / (train_batch_size *
-                                                     device_num)
-
+        train_speed = np.array(train_time).mean() / (train_batch_size * device_num)
         test_py_reader.start()
 
         test_batch_id = 0
