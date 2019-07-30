@@ -1,6 +1,6 @@
 # coding: utf8
-import json
 from aeon import DataLoader
+import json
 import os
 
 VAL_LIST = "val-index.tsv"
