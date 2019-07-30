@@ -277,9 +277,6 @@ def train(args):
     startup_prog = fluid.Program()
     train_prog = fluid.Program()
     test_prog = fluid.Program()
-    if args.enable_ce:
-        startup_prog.random_seed = 1000
-        train_prog.random_seed = 1000
 
     b_out = build_program(
                      is_train=True,
@@ -428,32 +425,6 @@ def train(args):
         if not os.path.isdir(model_path):
             os.makedirs(model_path)
         fluid.io.save_persistables(exe, model_path, main_program=train_prog)
-
-        # This is for continuous evaluation only
-        if args.enable_ce and pass_id == args.num_epochs - 1:
-            if device_num == 1:
-                # Use the mean cost/acc for training
-                print("kpis	train_cost	%s" % train_loss)
-                print("kpis	train_acc_top1	%s" % train_acc1)
-                print("kpis	train_acc_top5	%s" % train_acc5)
-                # Use the mean cost/acc for testing
-                print("kpis	test_cost	%s" % test_loss)
-                print("kpis	test_acc_top1	%s" % test_acc1)
-                print("kpis	test_acc_top5	%s" % test_acc5)
-                print("kpis	train_speed	%s" % train_speed)
-            else:
-                # Use the mean cost/acc for training
-                print("kpis	train_cost_card%s	%s" % (device_num, train_loss))
-                print("kpis	train_acc_top1_card%s	%s" %
-                      (device_num, train_acc1))
-                print("kpis	train_acc_top5_card%s	%s" %
-                      (device_num, train_acc5))
-                # Use the mean cost/acc for testing
-                print("kpis	test_cost_card%s	%s" % (device_num, test_loss))
-                print("kpis	test_acc_top1_card%s	%s" % (device_num, test_acc1))
-                print("kpis	test_acc_top5_card%s	%s" % (device_num, test_acc5))
-                print("kpis	train_speed_card%s	%s" % (device_num, train_speed))
-
 
 def main():
     args = parser.parse_args()

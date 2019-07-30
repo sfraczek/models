@@ -9,12 +9,12 @@ MEAN = [0.485, 0.456, 0.406]
 STDDEV = [0.229, 0.224, 0.225]
 
 
-def common_config(cache_dir, data_dir, thread_count, random_seed):
+def common_config(shape, cache_dir, data_dir, thread_count, random_seed):
     image_config = {
         "type": "image",
-        "height": 224,
-        "width": 224,
-        "channels": 3,
+        "height": shape[1],
+        "width": shape[2],
+        "channels": shape[0],
         "mean": MEAN,
         "stddev": STDDEV,
         "output_type": "float",
@@ -36,7 +36,8 @@ def common_config(cache_dir, data_dir, thread_count, random_seed):
 
 
 def train_reader(settings, batch_size):
-    config = common_config(settings.cache_dir, settings.data_dir,
+    shape = map(int, settings.image_shape.split(','))
+    config = common_config(shape, settings.cache_dir, settings.data_dir,
                            settings.reader_thread_count, settings.random_seed)
 
     augmentation_config = {
@@ -62,16 +63,18 @@ def train_reader(settings, batch_size):
 
 
 def val_reader(settings, batch_size):
-    config = common_config(settings.cache_dir, settings.data_dir,
+    shape = map(int, settings.image_shape.split(','))
+    config = common_config(shape, settings.cache_dir, settings.data_dir,
                            settings.reader_thread_count, settings.random_seed)
 
+    scale = float(shape[1]) / settings.resize_short_size
     augmentation_config = {
         "random_seed": 1,
         "type": "image",
         "flip_enable": False,
         "center": True,
         "crop_enable": True,
-        "scale": [244.0 / 256.0, 244.0 / 256.0],
+        "scale": [scale, scale],
         "resize_short_size": settings.resize_short_size,
     }
 
