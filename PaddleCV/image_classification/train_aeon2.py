@@ -70,7 +70,6 @@ add_arg('checkpoint',       str,   None,                 "Whether to resume chec
 add_arg('lr',               float, 0.1,                  "set learning rate.")
 add_arg('lr_strategy',      str,   "piecewise_decay",    "Set the learning rate decay strategy.")
 add_arg('model',            str,   "SE_ResNeXt50_32x4d", "Set the network to use.")
-add_arg('enable_ce',        bool,  False,                "If set True, enable continuous evaluation job.")
 add_arg('data_dir',         str,   "./data/ILSVRC2012/",  "The ImageNet dataset root dir.")
 add_arg('fp16',             bool,  False,                "Enable half precision training with fp16." )
 add_arg('scale_loss',       float, 1.0,                  "Scale loss for fp16." )
@@ -82,7 +81,6 @@ add_arg('lower_scale',      float,     0.08,      "Set the lower_scale in ramdom
 add_arg('lower_ratio',      float,     3./4.,      "Set the lower_ratio in ramdom_crop")
 add_arg('upper_ratio',      float,     4./3.,      "Set the upper_ratio in ramdom_crop")
 add_arg('resize_short_size',      int,     256,      "Set the resize_short_size")
-add_arg('is_distill',       bool,  False,        "is distill or not")
 add_arg('dummy_data',      bool,     False,      "Use dummy data reader.")
 add_arg('cache_dir',           str, "",              "Place where aeon will store cache")
 add_arg('reader_thread_count', int, 12,              "How many threads to allocate for reader")
@@ -233,19 +231,13 @@ def net_config(image, model, args, is_train, label=0, y_a=0, y_b=0, lam=0.0):
         acc_top5 = fluid.layers.accuracy(input=out0, label=label, k=5)
 
     else:
-        if not args.is_distill:
-            out = model.net(input=image, class_dim=class_dim)
-            softmax_out = fluid.layers.softmax(out, use_cudnn=False)
-            if is_train:
-                cost = calc_loss(epsilon,label,class_dim,softmax_out,use_label_smoothing)
+        out = model.net(input=image, class_dim=class_dim)
+        softmax_out = fluid.layers.softmax(out, use_cudnn=False)
+        if is_train:
+            cost = calc_loss(epsilon,label,class_dim,softmax_out,use_label_smoothing)
 
-            else:
-                cost = fluid.layers.cross_entropy(input=softmax_out, label=label)
         else:
-            out1, out2 = model.net(input=image, class_dim=args.class_dim)
-            softmax_out1, softmax_out = fluid.layers.softmax(out1), fluid.layers.softmax(out2)
-            smooth_out1 = fluid.layers.label_smooth(label=softmax_out1, epsilon=0.0, dtype="float32")
-            cost = fluid.layers.cross_entropy(input=softmax_out, label=smooth_out1, soft_label=True)
+            cost = fluid.layers.cross_entropy(input=softmax_out, label=label)
 
         avg_cost = fluid.layers.mean(cost)
         if args.scale_loss > 1:
@@ -412,7 +404,6 @@ def train(args):
     params = models.__dict__[args.model]().params
     for pass_id in range(params["num_epochs"]):
 
-        train_py_reader.start()
         train_info = [[], [], []]
         test_info = [[], [], []]
         train_time = []
@@ -423,10 +414,10 @@ def train(args):
             if use_ngraph:
                 loss, acc1, acc5, lr = train_exe.run(train_prog,
                                                      fetch_list=train_fetch_list,
-                                                     feed=feeder.feed(data))
+                                                     feed=train_feeder.feed(data))
             else:
                 loss, acc1, acc5, lr = train_exe.run(fetch_list=train_fetch_list,
-                                                     feed=feeder.feed(data))
+                                                     feed=train_feeder.feed(data))
 
             t2 = time.time()
             acc1 = np.mean(np.array(acc1))
@@ -455,9 +446,8 @@ def train(args):
             batch_id += 1
 
         train_loss = np.array(train_info[0]).mean()
-        if not use_mixup:
-            train_acc1 = np.array(train_info[1]).mean()
-            train_acc5 = np.array(train_info[2]).mean()
+        train_acc1 = np.array(train_info[1]).mean()
+        train_acc5 = np.array(train_info[2]).mean()
         train_speed = np.array(train_time).mean() / (train_batch_size * device_num)
 
         test_batch_id = 0
@@ -465,7 +455,7 @@ def train(args):
             t1 = time.time()
             loss, acc1, acc5 = exe.run(program=test_prog,
                                        fetch_list=test_fetch_list,
-                                       feed=feeder.feed(data))
+                                       feed=test_feeder.feed(data))
             t2 = time.time()
             period = t2 - t1
             loss = np.mean(loss)
