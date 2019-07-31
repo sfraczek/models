@@ -71,7 +71,7 @@ def val_reader(settings, batch_size):
         "flip_enable": False,
         "center": True,
         "crop_enable": True,
-        "scale": [244.0 / 256.0, 244.0 / 256.0],
+        "scale": [224.0 / 256.0, 224.0 / 256.0],
         "resize_short_size": settings.resize_short_size,
     }
 
