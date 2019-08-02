@@ -1,6 +1,6 @@
 # coding: utf8
 from aeon import DataLoader
-import json
+import numpy as np
 import os
 
 VAL_LIST = "val-index.tsv"
@@ -96,14 +96,18 @@ def train(settings, batch_size, drop_last=False):
             "batch_size should be a positive integeral value, but got batch_size={}"
             .format(batch_size))
     reader = train_reader(settings, batch_size)
+    if drop_last == True:
+        max_iter = np.floor(settings.total_images / batch_size)
+    else:
+        max_iter = np.ceil(settings.total_images / batch_size)
 
     def func():
+        batch = 0
         for tup in reader:
-            # tup is (('image',...),('label',...)) where ... stand is data
-            if len(tup[0][1]) == batch_size:
+            if batch < max_iter:
+                batch += 1
+                # tup is (('image',...),('label',...)) where ... stand is data
                 yield zip(tup[0][1], tup[1][1])
-        if drop_last == False and len(tup[0][1]) != 0:
-            yield zip(tup[0][1], tup[1][1])
 
     return func
 
@@ -115,13 +119,17 @@ def val(settings, batch_size, drop_last=False):
             "batch_size should be a positive integer value, but got batch_size={}"
             .format(batch_size))
     reader = val_reader(settings, batch_size)
+    if drop_last == True:
+        max_iter = np.floor(settings.total_images / batch_size)
+    else:
+        max_iter = np.ceil(settings.total_images / batch_size)
 
     def func():
+        batch = 0
         for tup in reader:
-            # tup is (('image',...),('label',...)) where ... stand is data
-            if len(tup[0][1]) == batch_size:
+            if batch < max_iter:
+                batch += 1
+                # tup is (('image',...),('label',...)) where ... stand is data
                 yield zip(tup[0][1], tup[1][1])
-        if drop_last == False and len(tup[0][1]) != 0:
-            yield zip(tup[0][1], tup[1][1])
 
     return func
