@@ -212,11 +212,6 @@ def net_config(image, model, args, is_train, label=0, y_a=0, y_b=0, lam=0.0):
     use_label_smoothing = args.use_label_smoothing
     epsilon = args.label_smoothing_epsilon
 
-    if args.enable_ce:
-        assert model_name == "SE_ResNeXt50_32x4d"
-        model.params["dropout_seed"] = 100
-        class_dim = 102
-
     if model_name == "GoogleNet":
         out0, out1, out2 = model.net(input=image, class_dim=class_dim)
         cost0 = fluid.layers.cross_entropy(input=out0, label=label)
@@ -313,10 +308,6 @@ def train(args):
     startup_prog = fluid.Program()
     train_prog = fluid.Program()
     test_prog = fluid.Program()
-    if args.enable_ce:
-        startup_prog.random_seed = 1000
-        train_prog.random_seed = 1000
-
     place = fluid.CUDAPlace(0) if args.use_gpu else fluid.CPUPlace()
 
     b_out = build_program(
@@ -360,23 +351,10 @@ def train(args):
     train_batch_size = args.batch_size / device_num
 
     test_batch_size = 16
-    if not args.enable_ce:
-        train_reader = reader.train(settings=args,
-                                    batch_size=train_batch_size,
-                                    drop_last=True)
-        test_reader = reader.val(settings=args, batch_size=test_batch_size)
-    else:
-        # use flowers dataset for CE and set use_xmap False to avoid disorder data
-        # but it is time consuming. For faster speed, need another dataset.
-        import random
-        random.seed(0)
-        np.random.seed(0)
-        train_reader = paddle.batch(
-            flowers.train(use_xmap=False),
-            batch_size=train_batch_size,
-            drop_last=True)
-        test_reader = paddle.batch(
-            flowers.test(use_xmap=False), batch_size=test_batch_size)
+    train_reader = reader.train(settings=args,
+                                batch_size=train_batch_size,
+                                drop_last=True)
+    test_reader = reader.val(settings=args, batch_size=test_batch_size)
 
     # use_ngraph is for CPU only, please refer to README_ngraph.md for details
     use_ngraph = os.getenv('FLAGS_use_ngraph')
@@ -407,7 +385,6 @@ def train(args):
         train_info = [[], [], []]
         test_info = [[], [], []]
         train_time = []
-        batch_id = 0
         time_record=[]
         for batch_id, data in enumerate(train_reader()):
             t1 = time.time()
@@ -443,14 +420,12 @@ def train(args):
                         pass_id, batch_id, "%.5f"%loss, "%.5f"%acc1, "%.5f"%acc5,
                         "%.5f" % lr, "%2.2f sec" % period, "%2.2f" % img_per_sec))
                 sys.stdout.flush()
-            batch_id += 1
 
         train_loss = np.array(train_info[0]).mean()
         train_acc1 = np.array(train_info[1]).mean()
         train_acc5 = np.array(train_info[2]).mean()
         train_speed = np.array(train_time).mean() / (train_batch_size * device_num)
 
-        test_batch_id = 0
         for test_batch_id, data in enumarete(test_reader):
             t1 = time.time()
             loss, acc1, acc5 = exe.run(program=test_prog,
@@ -470,7 +445,6 @@ def train(args):
                       .format(pass_id, test_batch_id, "%.5f"%loss,"%.5f"%acc1, "%.5f"%acc5,
                               "%2.2f sec" % period))
                 sys.stdout.flush()
-            test_batch_id += 1
 
         test_loss = np.array(test_info[0]).mean()
         test_acc1 = np.array(test_info[1]).mean()
@@ -487,31 +461,6 @@ def train(args):
         if not os.path.isdir(model_path):
             os.makedirs(model_path)
         fluid.io.save_persistables(exe, model_path, main_program=train_prog)
-
-        # This is for continuous evaluation only
-        if args.enable_ce and pass_id == args.num_epochs - 1:
-            if device_num == 1:
-                # Use the mean cost/acc for training
-                print("kpis	train_cost	%s" % train_loss)
-                print("kpis	train_acc_top1	%s" % train_acc1)
-                print("kpis	train_acc_top5	%s" % train_acc5)
-                # Use the mean cost/acc for testing
-                print("kpis	test_cost	%s" % test_loss)
-                print("kpis	test_acc_top1	%s" % test_acc1)
-                print("kpis	test_acc_top5	%s" % test_acc5)
-                print("kpis	train_speed	%s" % train_speed)
-            else:
-                # Use the mean cost/acc for training
-                print("kpis	train_cost_card%s	%s" % (device_num, train_loss))
-                print("kpis	train_acc_top1_card%s	%s" %
-                      (device_num, train_acc1))
-                print("kpis	train_acc_top5_card%s	%s" %
-                      (device_num, train_acc5))
-                # Use the mean cost/acc for testing
-                print("kpis	test_cost_card%s	%s" % (device_num, test_loss))
-                print("kpis	test_acc_top1_card%s	%s" % (device_num, test_acc1))
-                print("kpis	test_acc_top5_card%s	%s" % (device_num, test_acc5))
-                print("kpis	train_speed_card%s	%s" % (device_num, train_speed))
 
 
 def main():
