@@ -1,5 +1,4 @@
 # coding: utf8
-import json
 from aeon import DataLoader
 import os
 
@@ -15,8 +14,6 @@ def common_config(shape, cache_dir, data_dir, thread_count, random_seed):
         "height": shape[1],
         "width": shape[2],
         "channels": shape[0],
-        "mean": MEAN,
-        "stddev": STDDEV,
         "output_type": "float",
         "channel_major": True,
         "bgr_to_rgb": True
@@ -50,6 +47,8 @@ def train_reader(settings, batch_size):
         "do_area_scale": True,
         "scale": [0.08, 1],
         "resize_short_size": 0,
+        "mean": MEAN,
+        "stddev": STDDEV
     }
 
     config["shuffle_enable"] = True
@@ -76,6 +75,8 @@ def val_reader(settings, batch_size):
         "crop_enable": True,
         "scale": [scale, scale],
         "resize_short_size": settings.resize_short_size,
+        "mean": MEAN,
+        "stddev": STDDEV
     }
 
     config["shuffle_enable"] = False
