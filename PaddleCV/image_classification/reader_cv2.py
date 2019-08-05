@@ -1,11 +1,26 @@
+#copyright (c) 2019 PaddlePaddle Authors. All Rights Reserve.
+#
+#Licensed under the Apache License, Version 2.0 (the "License");
+#you may not use this file except in compliance with the License.
+#You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+#Unless required by applicable law or agreed to in writing, software
+#distributed under the License is distributed on an "AS IS" BASIS,
+#WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#See the License for the specific language governing permissions and
+#limitations under the License.
+
 import os
 import math
 import random
 import functools
 import numpy as np
-import paddle
 import cv2
 import io
+
+import paddle
 
 random.seed(0)
 np.random.seed(0)
@@ -13,12 +28,13 @@ np.random.seed(0)
 DATA_DIM = 224
 
 THREAD = 8
-BUF_SIZE = 102400
+BUF_SIZE = 2048
 
 DATA_DIR = './data/ILSVRC2012'
 
 img_mean = np.array([0.485, 0.456, 0.406]).reshape((3, 1, 1))
 img_std = np.array([0.229, 0.224, 0.225]).reshape((3, 1, 1))
+
 
 def rotate_image(img):
     """ rotate_image """
@@ -36,7 +52,6 @@ def random_crop(img, settings, scale=None, ratio=None):
     upper_ratio = settings.upper_ratio
     scale = [lower_scale, 1.0] if scale is None else scale
     ratio = [lower_ratio, upper_ratio] if ratio is None else ratio
-
 
     aspect_ratio = math.sqrt(np.random.uniform(*ratio))
     w = 1. * aspect_ratio
@@ -57,11 +72,12 @@ def random_crop(img, settings, scale=None, ratio=None):
     j = np.random.randint(0, img.shape[1] - w + 1)
 
     img = img[i:i + h, j:j + w, :]
-
     return img
+
 
 def distort_color(img):
     return img
+
 
 def resize_short(img, target_size):
     """ resize_short """
@@ -69,8 +85,12 @@ def resize_short(img, target_size):
     resized_width = int(round(img.shape[1] * percent))
     resized_height = int(round(img.shape[0] * percent))
     resized = cv2.resize(
-        img, (resized_width, resized_height), interpolation=cv2.INTER_CUBIC)
+        img,
+        (resized_width, resized_height),
+        interpolation=cv2.INTER_CUBIC
+    )
     return resized
+
 
 def crop_image(img, target_size, center):
     """ crop_image """
@@ -87,6 +107,7 @@ def crop_image(img, target_size, center):
     img = img[h_start:h_end, w_start:w_end, :]
     return img
 
+
 def create_mixup_reader(settings, rd):
     class context:
         tmp_mix = []
@@ -96,6 +117,7 @@ def create_mixup_reader(settings, rd):
 
     batch_size = settings.batch_size
     alpha = settings.mixup_alpha
+
     def fetch_data():
 
         data_list = []
@@ -103,7 +125,7 @@ def create_mixup_reader(settings, rd):
             data_list.append(item)
             if i % batch_size == batch_size - 1:
                 yield data_list
-                data_list =[]
+                data_list = []
 
     def mixup_data():
 
@@ -114,7 +136,9 @@ def create_mixup_reader(settings, rd):
                 lam = 1.
             l1 = np.array(data_list)
             l2 = np.random.permutation(l1)
-            mixed_l = [l1[i][0] * lam + (1 - lam) * l2[i][0] for i in range(len(l1))]
+            mixed_l = [
+                l1[i][0] * lam + (1 - lam) * l2[i][0] for i in range(len(l1))
+            ]
             yield mixed_l, l1, l2, lam
 
     def mixup_reader():
@@ -129,8 +153,8 @@ def create_mixup_reader(settings, rd):
 
     return mixup_reader
 
-def process_image(
-                  sample,
+
+def process_image(sample,
                   settings,
                   mode,
                   color_jitter,
@@ -151,8 +175,7 @@ def process_image(
             img = rotate_image(img)
         if crop_size > 0:
             img = random_crop(img, settings)
-            img = cv2.resize(
-                img, (crop_size, crop_size), interpolation=cv2.INTER_CUBIC)
+            img = cv2.resize(img, (crop_size, crop_size), interpolation=cv2.INTER_CUBIC)
         if color_jitter:
             img = distort_color(img)
         if np.random.randint(0, 2) == 1:
@@ -179,7 +202,6 @@ def process_image(
 def image_mapper(**kwargs):
     """ image_mapper """
     return functools.partial(process_image, **kwargs)
-
 
 def _reader_creator(settings,
                     file_list,
@@ -220,6 +242,7 @@ def _reader_creator(settings,
                     img_path = os.path.join(data_dir, img_path)
 
                     yield [img_path]
+
     crop_size = int(settings.image_shape.split(",")[2])
     image_mapper = functools.partial(
         process_image,
@@ -232,6 +255,56 @@ def _reader_creator(settings,
         image_mapper, reader, THREAD, BUF_SIZE, order=False)
     return reader
 
+def _dummy_reader(sample,
+                  mode):
+    if mode == 'train' or mode == 'val':
+        return (sample[0], sample[1])
+    elif mode == 'test':
+        return (sample[0])
+
+
+def create_dummy_reader(settings,
+                          file_list,
+                          mode,
+                          shuffle=False,
+                          data_dir=DATA_DIR,
+                          pass_id_as_seed=0):
+
+    # Create set of random images which will be served as input.
+    dummy_imgs = np.random.rand(BUF_SIZE, 3, DATA_DIM, DATA_DIM).astype(np.float32)
+    dummy_labels = np.random.randint(0, 1000, BUF_SIZE)
+
+    def _reader():
+        with open(file_list) as flist:
+            full_lines = [line.strip() for line in flist]
+            if shuffle:
+                if pass_id_as_seed:
+                    np.random.seed(pass_id_as_seed)
+                np.random.shuffle(full_lines)
+            if mode == 'train' and os.getenv('PADDLE_TRAINING_ROLE'):
+                # distributed mode if the env var `PADDLE_TRAINING_ROLE` exits
+                trainer_id = int(os.getenv("PADDLE_TRAINER_ID", "0"))
+                trainer_count = int(os.getenv("PADDLE_TRAINERS_NUM", "1"))
+                per_node_lines = len(full_lines) // trainer_count
+                lines = full_lines[trainer_id * per_node_lines:(trainer_id + 1) * per_node_lines]
+                print(
+                    "read images from %d, length: %d, lines length: %d, total: %d"
+                    % (trainer_id * per_node_lines, per_node_lines, len(lines),
+                       len(full_lines)))
+            else:
+                lines = full_lines
+
+            idx = 0
+            for line in lines:
+                if mode == 'train' or mode == 'val':
+                    yield (dummy_imgs[idx % BUF_SIZE], dummy_labels[idx % BUF_SIZE])
+                elif mode == 'test':
+                    yield (dummy_imgs[idx % BUF_SIZE])
+
+    image_mapper = functools.partial(_dummy_reader, mode)
+    reader = paddle.reader.xmap_readers(image_mapper, _reader, THREAD, BUF_SIZE, order=True)
+    return reader
+
 def train(settings, data_dir=DATA_DIR, pass_id_as_seed=0):
     file_list = os.path.join(data_dir, 'train_list.txt')
     reader = _reader_creator(
@@ -242,19 +315,27 @@ def train(settings, data_dir=DATA_DIR, pass_id_as_seed=0):
         color_jitter=False,
         rotate=False,
         data_dir=data_dir,
-        pass_id_as_seed=pass_id_as_seed,
-    )
+        pass_id_as_seed=pass_id_as_seed, )
+
     if settings.use_mixup == True:
         reader = create_mixup_reader(settings, reader)
+    elif settings.dummy_data:
+        reader = create_dummy_reader(settings,
+                                    file_list,
+                                    'train',
+                                    shuffle=True,
+                                    data_dir=data_dir,
+                                    pass_id_as_seed=pass_id_as_seed)
     return reader
 
-def val(settings,data_dir=DATA_DIR):
+
+def val(settings, data_dir=DATA_DIR):
     file_list = os.path.join(data_dir, 'val_list.txt')
-    return _reader_creator(settings ,file_list, 'val', shuffle=False, 
-            data_dir=data_dir)
+    return _reader_creator(
+        settings, file_list, 'val', shuffle=False, data_dir=data_dir)
 
 
-def test(settings,data_dir=DATA_DIR):
+def test(settings, data_dir=DATA_DIR):
     file_list = os.path.join(data_dir, 'val_list.txt')
-    return _reader_creator(settings, file_list, 'test', shuffle=False,
-            data_dir=data_dir)
+    return _reader_creator(
+        settings, file_list, 'test', shuffle=False, data_dir=data_dir)

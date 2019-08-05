@@ -1,21 +1,53 @@
+#copyright (c) 2019 PaddlePaddle Authors. All Rights Reserve.
+#
+#Licensed under the Apache License, Version 2.0 (the "License");
+#you may not use this file except in compliance with the License.
+#You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+#Unless required by applicable law or agreed to in writing, software
+#distributed under the License is distributed on an "AS IS" BASIS,
+#WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#See the License for the specific language governing permissions and
+#limitations under the License.
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
 import os
 import numpy as np
 import time
 import sys
 import functools
 import math
+
+
+def set_paddle_flags(flags):
+    for key, value in flags.items():
+        if os.environ.get(key, None) is None:
+            os.environ[key] = str(value)
+
+
+# NOTE(paddle-dev): All of these flags should be
+# set before `import paddle`. Otherwise, it would
+# not take any effect.
+set_paddle_flags({
+    'FLAGS_eager_delete_tensor_gb': 0,  # enable gc
+    'FLAGS_fraction_of_gpu_memory_to_use': 0.98
+})
+import argparse
+import functools
+import subprocess
 import paddle
 import paddle.fluid as fluid
+import paddle.dataset.flowers as flowers
 import reader_aeon as reader
-import argparse
-import subprocess
 import utils
 import models
 from utils.fp16_utils import create_master_params_grads, master_param_to_train_param
-from utils.utility import add_arguments, print_arguments
+from utils.utility import add_arguments, print_arguments, check_gpu
 from utils.learning_rate import cosine_decay_with_warmup
 
 IMAGENET1000 = 1281167
@@ -31,7 +63,8 @@ add_arg('num_epochs',       int,   120,                  "number of epochs.")
 add_arg('class_dim',        int,   1000,                 "Class number.")
 add_arg('image_shape',      str,   "3,224,224",          "input image size")
 add_arg('model_save_dir',   str,   "output",             "model save directory")
-add_arg('with_mem_opt',     bool,  True,                 "Whether to use memory optimization or not.")
+add_arg('with_mem_opt',     bool,  False,                 "Whether to use memory optimization or not.")
+add_arg('with_inplace',     bool,  True,                 "Whether to use inplace memory optimization.")
 add_arg('pretrained_model', str,   None,                 "Whether to use pretrained model.")
 add_arg('checkpoint',       str,   None,                 "Whether to resume checkpoint.")
 add_arg('lr',               float, 0.1,                  "set learning rate.")
@@ -48,6 +81,7 @@ add_arg('lower_scale',      float,     0.08,      "Set the lower_scale in ramdom
 add_arg('lower_ratio',      float,     3./4.,      "Set the lower_ratio in ramdom_crop")
 add_arg('upper_ratio',      float,     4./3.,      "Set the upper_ratio in ramdom_crop")
 add_arg('resize_short_size',      int,     256,      "Set the resize_short_size")
+add_arg('dummy_data',      bool,     False,      "Use dummy data reader.")
 add_arg('cache_dir',           str, "",              "Place where aeon will store cache")
 add_arg('reader_thread_count', int, 12,              "How many threads to allocate for reader")
 add_arg('random_seed',         int, 0,               "Random seed. Choose 0 for non-deterministic.")
@@ -170,10 +204,9 @@ def calc_loss(epsilon,label,class_dim,softmax_out,use_label_smoothing):
     return loss
 
 
-def net_config(image, model, args, is_train, label=0):
+def net_config(image, model, args, is_train, label=0, y_a=0, y_b=0, lam=0.0):
     model_list = [m for m in dir(models) if "__" not in m]
-    assert args.model in model_list, "{} is not lists: {}".format(args.model,
-                                                                  model_list)
+    assert args.model in model_list, "{} is not lists: {}".format(args.model, model_list)
     class_dim = args.class_dim
     model_name = args.model
     use_label_smoothing = args.use_label_smoothing
@@ -254,6 +287,7 @@ def build_program(is_train, main_prog, startup_prog, args):
                 else:
                     optimizer.minimize(avg_cost)
                 global_lr = optimizer._global_learning_rate()
+                global_lr.persistable=True
                 build_program_out.append(global_lr)
 
     return build_program_out
@@ -320,7 +354,9 @@ def train(args):
     train_batch_size = args.batch_size / device_num
 
     test_batch_size = 16
-    train_reader = reader.train(settings=args, batch_size=train_batch_size, drop_last=True)
+    train_reader = reader.train(settings=args,
+                                batch_size=train_batch_size,
+                                drop_last=True)
     test_reader = reader.val(settings=args, batch_size=test_batch_size)
 
     train_py_reader.decorate_paddle_reader(train_reader)
@@ -329,10 +365,21 @@ def train(args):
     # use_ngraph is for CPU only, please refer to README_ngraph.md for details
     use_ngraph = os.getenv('FLAGS_use_ngraph')
     if not use_ngraph:
+        build_strategy = fluid.BuildStrategy()
+        # memopt may affect GC results
+        #build_strategy.memory_optimize = args.with_mem_opt
+        build_strategy.enable_inplace = args.with_inplace
+        #build_strategy.fuse_all_reduce_ops=1
+
+        exec_strategy = fluid.ExecutionStrategy()
+        exec_strategy.num_iteration_per_drop_scope = 10
+
         train_exe = fluid.ParallelExecutor(
             main_program=train_prog,
             use_cuda=bool(args.use_gpu),
-            loss_name=train_cost.name)
+            loss_name=train_cost.name,
+            build_strategy=build_strategy,
+            exec_strategy=exec_strategy)
     else:
         train_exe = exe
 
@@ -346,6 +393,7 @@ def train(args):
         test_info = [[], [], []]
         train_time = []
         batch_id = 0
+        time_record=[]
         try:
             while True:
                 t1 = time.time()
@@ -355,11 +403,13 @@ def train(args):
                     loss, acc1, acc5, lr = train_exe.run(fetch_list=train_fetch_list)
 
                 t2 = time.time()
-                period = t2 - t1
                 acc1 = np.mean(np.array(acc1))
                 acc5 = np.mean(np.array(acc5))
                 train_info[1].append(acc1)
                 train_info[2].append(acc5)
+
+                period = t2 - t1
+                time_record.append(period)
 
                 loss = np.mean(np.array(loss))
                 train_info[0].append(loss)
@@ -367,11 +417,14 @@ def train(args):
                 train_time.append(period)
 
                 if batch_id % 10 == 0:
+                    period = np.mean(time_record)
+                    time_record=[]
                     img_per_sec = args.batch_size / period
-                    print("Pass {0}, trainbatch {1}, loss {2}, \
-                        acc1 {3}, acc5 {4}, lr {5}, time {6}, img/s {7}"
-                           .format(pass_id, batch_id, "%.5f"%loss, "%.5f"%acc1, "%.5f"%acc5, "%.5f" %
-                               lr, "%2.2f sec" % period, "%2.2f"%img_per_sec))
+
+                    print("Pass {0}, trainbatch {1}, loss {2}, acc1 {3}, acc5 {4}, lr {5}, "
+                          " time {6}, img/s {7}".format(
+                            pass_id, batch_id, "%.5f"%loss, "%.5f"%acc1, "%.5f"%acc5,
+                            "%.5f" % lr, "%2.2f sec" % period, "%2.2f" % img_per_sec))
                     sys.stdout.flush()
                 batch_id += 1
         except fluid.core.EOFException:
@@ -380,9 +433,7 @@ def train(args):
         train_loss = np.array(train_info[0]).mean()
         train_acc1 = np.array(train_info[1]).mean()
         train_acc5 = np.array(train_info[2]).mean()
-        train_speed = np.array(train_time).mean() / (train_batch_size *
-                                                     device_num)
-
+        train_speed = np.array(train_time).mean() / (train_batch_size * device_num)
         test_py_reader.start()
 
         test_batch_id = 0
@@ -413,7 +464,6 @@ def train(args):
         test_acc1 = np.array(test_info[1]).mean()
         test_acc5 = np.array(test_info[2]).mean()
 
-
         print("End pass {0}, train_loss {1}, train_acc1 {2}, train_acc5 {3}, "
               "test_loss {4}, test_acc1 {5}, test_acc5 {6}".format(
                   pass_id, "%.5f"%train_loss, "%.5f"%train_acc1, "%.5f"%train_acc5, "%.5f"%test_loss,
@@ -429,6 +479,7 @@ def train(args):
 def main():
     args = parser.parse_args()
     print_arguments(args)
+    check_gpu(args.use_gpu)
     train(args)
 
 

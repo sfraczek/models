@@ -49,29 +49,25 @@
 
 ## AEON TRAIN (LOOPING, PYREADER)
 # !!!!! FOR LOOPING CHOOSE train_aeon2.py AND FOR PYREADER CHOOSE train_aeon.py
-# export KMP_AFFINITY=granularity=fine,compact,1,0
-# export KMP_BLOCKTIME=1
-# time numactl --membind=0 --physcpubind=0-13 \
-# python train_aeon.py \
-#        --model=ResNet50 \
-#        --batch_size=16 \
-#        --class_dim=1000 \
-#        --image_shape=3,224,224 \
-#        --with_mem_opt=False \
-#        --use_gpu=True \
-#        --total_images=1281167 \
-#        --model_save_dir=output/ \
-#        --lr_strategy=piecewise_decay \
-#        --num_epochs=120 \
-#        --lr=0.1 \
-#        --l2_decay=1e-4 \
-#        --cache_dir=/mnt/drive/.aeon-cache/ \
-#        --reader_thread_count=14 \
-#        --random_seed=1
-
-
-
-
+export KMP_AFFINITY=granularity=fine,compact,1,0
+export KMP_BLOCKTIME=1
+time numactl --membind=0 --physcpubind=0-13 \
+python train_aeon.py \
+       --model=ResNet50 \
+       --batch_size=16 \
+       --class_dim=1000 \
+       --image_shape=3,224,224 \
+       --with_mem_opt=False \
+       --use_gpu=True \
+       --total_images=1281167 \
+       --model_save_dir=output/ \
+       --lr_strategy=piecewise_decay \
+       --num_epochs=120 \
+       --lr=0.1 \
+       --l2_decay=1e-4 \
+       --cache_dir=/mnt/drive/.aeon-cache/ \
+       --reader_thread_count=14 \
+       --random_seed=1
 
 #Hyperparameters config
 #Example: SE_ResNext50_32x4d
@@ -95,7 +91,6 @@
 #            --batch_size=256 \
 #            --total_images=1281167 \
 #            --image_shape=3,224,224 \
-#            --input_dtype=float32 \
 #            --class_dim=1000 \
 #            --lr_strategy=cosine_decay \
 #            --lr=0.1 \
@@ -113,7 +108,6 @@
 #            --batch_size=256 \
 #            --total_images=1281167 \
 #            --image_shape=3,224,224 \
-#            --input_dtype=float32 \
 #            --class_dim=1000 \
 #            --lr_strategy=piecewise_decay \
 #            --lr=0.1 \
@@ -128,7 +122,6 @@
 #            --batch_size=256 \
 #            --total_images=1281167 \
 #            --image_shape=3,224,224 \
-#            --input_dtype=float32 \
 #            --class_dim=1000 \
 #            --lr_strategy=cosine_decay \
 #            --lr=0.1 \
@@ -146,7 +139,6 @@
 #            --batch_size=256 \
 #            --total_images=1281167 \
 #            --image_shape=3,299,299 \
-#            --input_dtype=float32 \
 #            --class_dim=1000 \
 #            --lr_strategy=cosine_decay \
 #            --lr=0.045 \
@@ -164,7 +156,6 @@
 #            --batch_size=256 \
 #            --total_images=1281167 \
 #            --image_shape=3,224,224 \
-#            --input_dtype=float32 \
 #            --class_dim=1000 \
 #            --lr_strategy=cosine_decay \
 #            --lr=0.1 \
@@ -182,7 +173,6 @@
 #            --batch_size=256 \
 #            --total_images=1281167 \
 #            --image_shape=3,224,224 \
-#            --input_dtype=float32 \
 #            --class_dim=1000 \
 #            --lr_strategy=cosine_decay \
 #            --lr=0.1 \
@@ -200,7 +190,6 @@
 #            --batch_size=256 \
 #            --total_images=1281167 \
 #            --image_shape=3,224,224 \
-#            --input_dtype=float32 \
 #            --class_dim=1000 \
 #            --lr_strategy=cosine_decay \
 #            --lr=0.1 \
@@ -217,7 +206,6 @@
 #	    --batch_size=256 \
 #            --total_images=1281167 \
 #            --image_shape=3,224,224 \
-#            --input_dtype=float32 \
 #            --class_dim=1000 \
 #            --lr_strategy=cosine_decay \
 #            --lr=0.1 \
@@ -304,7 +292,7 @@
 #	--lr_strategy=cosine_decay_with_warmup \
 #	--lr=0.5 \
 #	--num_epochs=240 \
-#	--l2_decay=4e-5 
+#	--l2_decay=4e-5
 #GoogleNet:
 #python train.py \
 #	--model=GoogleNet \
@@ -405,7 +393,7 @@
 
 #VGG13:
 #python train.py
-#        --model=VGG13 \          
+#        --model=VGG13 \
 #        --batch_size=256 \
 #        --total_images=1281167 \
 #        --class_dim=1000 \
