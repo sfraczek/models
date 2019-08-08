@@ -9,7 +9,7 @@ from utils.utility import add_arguments, print_arguments
 parser = argparse.ArgumentParser(description=__doc__)
 add_arg = functools.partial(add_arguments, argparser=parser)
 
-add_arg('mode',                 str, '  train', "Choose training or evaluation", choices=['train','eval'])
+add_arg('mode',                 str,    'train', "Choose training or evaluation", choices=['train','eval'])
 add_arg('total_images',         int,    1281167, "Training image number.")
 add_arg('image_shape',          str,    '3,224,224', "input image size")
 add_arg('data_dir',             str,    './data/ILSVRC2012/', "The ImageNet dataset root dir.")
@@ -29,7 +29,7 @@ def perf(args):
     if args.mode == 'train':
         the_reader = reader.train(
             settings=args, batch_size=args.batch_size, drop_last=args.drop_last)
-    else:
+    elif args.mode == 'eval':
         the_reader = reader.val(
             settings=args, batch_size=args.batch_size, drop_last=args.drop_last)
 
@@ -44,7 +44,7 @@ def perf(args):
     for pass_id in range(args.num_epochs):
         print("Pass: {0}".format(pass_id))
         t1 = time.time()
-        for batch_id, data in enumerate(the_reader()):
+        for batch_id, data in enumerate(the_reader(), 1):
             t2 = time.time()
             latency[index] = t2 - t1
             t1 = t2
