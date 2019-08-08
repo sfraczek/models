@@ -44,7 +44,7 @@ def perf(args):
     for pass_id in range(args.num_epochs):
         print("Pass: {0}".format(pass_id))
         t1 = time.time()
-        for batch_id, data in enumerate(the_reader()):
+        for batch_id, data in enumerate(the_reader(), 1):
             t2 = time.time()
             latency[index] = t2 - t1
             t1 = t2
