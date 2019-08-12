@@ -45,7 +45,7 @@ def rotate_image(img):
     rotated = cv2.warpAffine(img, M, (w, h))
     return rotated
 
-def random_crop(img, size, settings, scale=None, ratio=None):
+def random_crop(img, settings, scale=None, ratio=None):
     """ random_crop """
     lower_scale = settings.lower_scale
     lower_ratio = settings.lower_ratio
@@ -72,13 +72,7 @@ def random_crop(img, size, settings, scale=None, ratio=None):
     j = np.random.randint(0, img.shape[1] - w + 1)
 
     img = img[i:i + h, j:j + w, :]
-
-    resized = cv2.resize(
-        img,
-        (size, size)
-        #, interpolation=cv2.INTER_LANCZOS4
-    )
-    return resized
+    return img
 
 
 def distort_color(img):
@@ -93,7 +87,7 @@ def resize_short(img, target_size):
     resized = cv2.resize(
         img,
         (resized_width, resized_height),
-        #interpolation=cv2.INTER_LANCZOS4
+        interpolation=cv2.INTER_CUBIC
     )
     return resized
 
@@ -180,7 +174,8 @@ def process_image(sample,
         if rotate:
             img = rotate_image(img)
         if crop_size > 0:
-            img = random_crop(img, crop_size, settings)
+            img = random_crop(img, settings)
+            img = cv2.resize(img, (crop_size, crop_size), interpolation=cv2.INTER_CUBIC)
         if color_jitter:
             img = distort_color(img)
         if np.random.randint(0, 2) == 1:
