@@ -274,8 +274,10 @@ def create_dummy_reader(settings,
                           shuffle=False,
                           data_dir=DATA_DIR,
                           pass_id_as_seed=0):
-    img = np.random.rand(3, DATA_DIM, DATA_DIM).astype(np.float32)
-    label = np.random.randint(0, 1000)
+
+    # Create set of random images which will be served as input.
+    dummy_imgs = np.random.rand(BUF_SIZE, 3, DATA_DIM, DATA_DIM).astype(np.float32)
+    dummy_labels = np.random.randint(0, 1000, BUF_SIZE)
 
     def _reader():
         with open(file_list) as flist:
@@ -297,11 +299,12 @@ def create_dummy_reader(settings,
             else:
                 lines = full_lines
 
+            idx = 0
             for line in lines:
                 if mode == 'train' or mode == 'val':
-                    yield (img, label)
+                    yield (dummy_imgs[idx % BUF_SIZE], dummy_labels[idx % BUF_SIZE])
                 elif mode == 'test':
-                    yield (img)
+                    yield (dummy_imgs[idx % BUF_SIZE])
 
     image_mapper = functools.partial(_dummy_reader, mode)
     reader = paddle.reader.xmap_readers(image_mapper, _reader, THREAD, BUF_SIZE, order=True)
