@@ -356,18 +356,6 @@ def train(args):
             images = batch['image']
             labels = batch['label']
 
-            # image is already rgb chw here
-            #  with open('objs_aeon.txt', 'w') as f:
-            #      f.write(str(len(images[0])))
-            #      np.set_printoptions(threshold=np.inf)
-            #      f.write(str(images[0]))
-            #      f.write("\n")
-            #      f.write(str(labels[0]))
-            #      print("printed")
-            #      #  import pdb
-            #      #  pdb.set_trace()
-            #      raise "stop now"
-
             images /= 255
             images -= img_mean
             images /= img_std
@@ -377,7 +365,6 @@ def train(args):
                 loss, acc1, acc5, lr = train_exe.run(train_prog, fetch_list=train_fetch_list, feed=feeder.feed(feed_data))
             else:
                 loss, acc1, acc5, lr = train_exe.run(fetch_list=train_fetch_list, feed=feeder.feed(feed_data))
-
 
             acc1 = np.mean(np.array(acc1))
             acc5 = np.mean(np.array(acc5))

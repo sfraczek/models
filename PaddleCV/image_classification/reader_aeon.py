@@ -39,7 +39,6 @@ def train_reader(settings):
 
     augmentation_config = {
         "random_seed": 1,
-        "shuffle_enable": True,
         "type": "image",
         "flip_enable": True,
         "center": False,
@@ -55,6 +54,7 @@ def train_reader(settings):
     cache_dir = CACHE_DIR
     config = dict()
     config["shuffle_enable"] = True
+    config["shuffle_manifest"] = True
     config['decode_thread_count'] = THREAD
     config['manifest_filename'] = manifest_filename
     config['manifest_root'] = manifest_root
