@@ -47,6 +47,8 @@ def train_reader(settings):
         "do_area_scale": True,
         "scale": [0.08, 1],
         "resize_short_size": 0,
+        "mean": MEAN,
+        "stddev": STDDEV
     }
 
     manifest_filename = TRAIN_LIST_DIR
@@ -91,6 +93,8 @@ def val_reader(settings):
         "crop_enable": True,
         "scale": [244.0 / 256.0, 244.0 / 256.0],
         "resize_short_size": settings.resize_short_size,
+        "mean": MEAN,
+        "stddev": STDDEV
     }
 
     manifest_filename = VAL_LIST_DIR
