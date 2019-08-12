@@ -15,9 +15,6 @@ from utils.learning_rate import cosine_decay
 from utils.utility import add_arguments, print_arguments
 import math
 
-import json
-from aeon import DataLoader
-
 parser = argparse.ArgumentParser(description=__doc__)
 add_arg = functools.partial(add_arguments, argparser=parser)
 # yapf: disable
@@ -84,43 +81,7 @@ def eval(args):
 
     fluid.io.load_persistables(exe, pretrained_model)
 
-    image_config = {
-        "type": "image",
-        "height": 224,
-        "width": 224,
-        "output_type": "float",
-        "channel_major": True
-    }
-
-    label_config = {"type": "label", "binary": False}
-
-    augmentation_config = {
-        "type": "image",
-        "flip_enable": False,
-        "center": True,
-        "crop_enable": True,
-        "scale": [224.0/256.0, 224.0/256.0]
-    }
-
-    manifest_filename = "/mnt/drive/data/i1k/i1k-extracted/val-index_copied.csv"
-    # manifest_filename = "/mnt/drive/data/i1k/i1k-extracted/val-index.csv"
-    #  manifest_root = "/mnt/drive/data/i1k/i1k-extracted"
-    manifest_root =  "/mnt/drive/data/ILSVRC2012_china/"
-    #  cache_dir = ""
-    cache_dir = "/mnt/drive/.aeon-cache/"
-
-    config = dict()
-    config['decode_thread_count'] = 14
-    config['manifest_filename'] = manifest_filename
-    config['manifest_root'] = manifest_root
-    config['cache_directory'] = cache_dir
-    config['etl'] = [image_config, label_config]
-    config['augmentation'] = [augmentation_config]
-    config['batch_size'] = args.batch_size
-
-    #  print(json.dumps(config, indent=4))
-
-    dl = DataLoader(config)
+    val_reader = reader.val_reader(settings=args)
     feeder = fluid.DataFeeder(place=place, feed_list=[image, label])
 
     test_info = [[], [], []]
@@ -132,7 +93,7 @@ def eval(args):
     img_std = np.array(img_std).reshape((3, 1, 1))
     while True:
         batch_id += 1
-        data = dl.next()
+        data = val_reader.next()
         batch = {k: v for k, v in data}
         images = batch['image']
         labels = batch['label']
@@ -165,6 +126,7 @@ def eval(args):
                   "%.5f"%loss,"%.5f"%acc1, "%.5f"%acc5, \
                   "%2.2f sec" % period))
             sys.stdout.flush()
+
         if batch_id == args.iterations:
             break
 
