@@ -45,7 +45,6 @@ def rotate_image(img):
     rotated = cv2.warpAffine(img, M, (w, h))
     return rotated
 
-
 def random_crop(img, size, settings, scale=None, ratio=None):
     """ random_crop """
     lower_scale = settings.lower_scale

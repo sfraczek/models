@@ -20,6 +20,7 @@
 #            --batch_size=256 \
 #            --total_images=1281167 \
 #            --image_shape=3,224,224 \
+#            --input_dtype=float32 \
 #            --class_dim=1000 \
 #            --lr_strategy=cosine_decay \
 #            --lr=0.1 \
@@ -37,6 +38,7 @@
 #            --batch_size=256 \
 #            --total_images=1281167 \
 #            --image_shape=3,224,224 \
+#            --input_dtype=float32 \
 #            --class_dim=1000 \
 #            --lr_strategy=piecewise_decay \
 #            --lr=0.1 \
@@ -51,6 +53,7 @@
 #            --batch_size=256 \
 #            --total_images=1281167 \
 #            --image_shape=3,224,224 \
+#            --input_dtype=float32 \
 #            --class_dim=1000 \
 #            --lr_strategy=cosine_decay \
 #            --lr=0.1 \
@@ -68,6 +71,7 @@
 #            --batch_size=256 \
 #            --total_images=1281167 \
 #            --image_shape=3,299,299 \
+#            --input_dtype=float32 \
 #            --class_dim=1000 \
 #            --lr_strategy=cosine_decay \
 #            --lr=0.045 \
@@ -85,6 +89,7 @@
 #            --batch_size=256 \
 #            --total_images=1281167 \
 #            --image_shape=3,224,224 \
+#            --input_dtype=float32 \
 #            --class_dim=1000 \
 #            --lr_strategy=cosine_decay \
 #            --lr=0.1 \
@@ -102,6 +107,7 @@
 #            --batch_size=256 \
 #            --total_images=1281167 \
 #            --image_shape=3,224,224 \
+#            --input_dtype=float32 \
 #            --class_dim=1000 \
 #            --lr_strategy=cosine_decay \
 #            --lr=0.1 \
@@ -119,6 +125,7 @@
 #            --batch_size=256 \
 #            --total_images=1281167 \
 #            --image_shape=3,224,224 \
+#            --input_dtype=float32 \
 #            --class_dim=1000 \
 #            --lr_strategy=cosine_decay \
 #            --lr=0.1 \
@@ -135,6 +142,7 @@
 #	    --batch_size=256 \
 #            --total_images=1281167 \
 #            --image_shape=3,224,224 \
+#            --input_dtype=float32 \
 #            --class_dim=1000 \
 #            --lr_strategy=cosine_decay \
 #            --lr=0.1 \
@@ -387,7 +395,7 @@ export OMP_NUM_THREADS=14
 export KMP_AFFINITY=granularity=fine,compact,1,0
 export KMP_BLOCKTIME=1
 time numactl --membind=0 --physcpubind=0-13 \
-python eval.py \
+python eval_aeon.py \
        --model=ResNet50 \
        --batch_size=50 \
        --iterations=1000 \
