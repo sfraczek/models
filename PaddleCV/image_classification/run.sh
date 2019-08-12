@@ -1,3 +1,78 @@
+## REF EVAL (LOOPING)
+# export KMP_AFFINITY=granularity=fine,compact,1,0
+# export KMP_BLOCKTIME=1
+# time numactl --membind=0 --physcpubind=0-13 \
+# python eval.py \
+#        --model=ResNet50 \
+#        --batch_size=16 \
+#        --class_dim=1000 \
+#        --image_shape=3,224,224 \
+#        --with_mem_opt=True \
+#        --use_gpu=True \
+#        --pretrained_model=/mnt/drive/recovered/ResNet50_pretrained
+
+## AEON EVAL (LOOPING)
+# export KMP_AFFINITY=granularity=fine,compact,1,0
+# export KMP_BLOCKTIME=1
+# time numactl --membind=0 --physcpubind=0-13 \
+# python eval_aeon.py \
+#        --model=ResNet50 \
+#        --batch_size=16 \
+#        --class_dim=1000 \
+#        --image_shape=3,224,224 \
+#        --with_mem_opt=True \
+#        --use_gpu=True \
+#        --pretrained_model=/mnt/drive/recovered/ResNet50_pretrained \
+#        --cache_dir=/mnt/drive/.aeon-cache/ \
+#        --reader_thread_count=14 \
+#        --random_seed=1
+
+## REF TRAIN (LOOPING, PYREADER)
+# !!!!! FOR LOOPING CHOOSE train2.py AND FOR PYREADER CHOOSE train.py
+# export KMP_AFFINITY=granularity=fine,compact,1,0
+# export KMP_BLOCKTIME=1
+# time numactl --membind=0 --physcpubind=0-13 \
+# python train.py \
+#        --model=ResNet50 \
+#        --batch_size=16 \
+#        --class_dim=1000 \
+#        --image_shape=3,224,224 \
+#        --with_mem_opt=False \
+#        --use_gpu=True \
+#        --total_images=1281167 \
+#        --model_save_dir=output/ \
+#        --lr_strategy=piecewise_decay \
+#        --num_epochs=120 \
+#        --lr=0.1 \
+#        --l2_decay=1e-4
+
+
+## AEON TRAIN (LOOPING, PYREADER)
+# !!!!! FOR LOOPING CHOOSE train_aeon2.py AND FOR PYREADER CHOOSE train_aeon.py
+# export KMP_AFFINITY=granularity=fine,compact,1,0
+# export KMP_BLOCKTIME=1
+# time numactl --membind=0 --physcpubind=0-13 \
+# python train_aeon.py \
+#        --model=ResNet50 \
+#        --batch_size=16 \
+#        --class_dim=1000 \
+#        --image_shape=3,224,224 \
+#        --with_mem_opt=False \
+#        --use_gpu=True \
+#        --total_images=1281167 \
+#        --model_save_dir=output/ \
+#        --lr_strategy=piecewise_decay \
+#        --num_epochs=120 \
+#        --lr=0.1 \
+#        --l2_decay=1e-4 \
+#        --cache_dir=/mnt/drive/.aeon-cache/ \
+#        --reader_thread_count=14 \
+#        --random_seed=1
+
+
+
+
+
 #Hyperparameters config
 #Example: SE_ResNext50_32x4d
 # python train.py \
@@ -382,17 +457,3 @@
 #    --model=ResNet50 \
 #    --pretrained_model=ResNet50_pretrained
 
-export FLAGS_use_mkldnn=1
-export OMP_NUM_THREADS=14
-export KMP_AFFINITY=granularity=fine,compact,1,0
-export KMP_BLOCKTIME=1
-time numactl --membind=0 --physcpubind=0-13 \
-python eval.py \
-       --model=ResNet50 \
-       --batch_size=50 \
-       --iterations=1000 \
-       --class_dim=1000 \
-       --image_shape=3,224,224 \
-       --with_mem_opt=False \
-       --use_gpu=False \
-       --pretrained_model=/mnt/drive/recovered/ResNet50_pretrained
