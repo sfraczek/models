@@ -35,6 +35,7 @@ add_arg = functools.partial(add_arguments, argparser=parser)
 # yapf: disable
 add_arg('batch_size',       int,  256,                 "Minibatch size.")
 add_arg('use_gpu',          bool, True,                "Whether to use GPU or not.")
+add_arg('total_images',     int,   50000,              "Training image number.")
 add_arg('class_dim',        int,  1000,                "Class number.")
 add_arg('image_shape',      str,  "3,224,224",         "Input image size")
 add_arg('with_mem_opt',     bool, True,                "Whether to use memory optimization or not.")
