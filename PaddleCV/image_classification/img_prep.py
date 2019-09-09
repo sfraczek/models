@@ -153,7 +153,7 @@ def random_crop(img, settings, scale=None, ratio=None):
 def distort_color(img):
     return img
 
-def resize_short(img, target_size):
+def resize_short(img, target_size, settings):
     """ resize_short """
     percent = float(target_size) / min(img.shape[0], img.shape[1])
     resized_width = int(round(img.shape[1] * percent))
@@ -166,7 +166,7 @@ def resize_short(img, target_size):
     return resized
 
 
-def crop_image(img, target_size, center):
+def crop_image(img, target_size, center, settings):
     """ crop_image """
     height, width = img.shape[:2]
     size = target_size
@@ -180,8 +180,11 @@ def crop_image(img, target_size, center):
             h_start = settings.crop_y_offset
         if settings.random_crop_x_offset:
             w_start = settings.crop_x_offset
-        print('[crop_image] w_start: {}'.format(w_start))
-        print('[crop_image] h_start: {}'.format(h_start))
+
+    print('[crop] w: {}'.format(size))
+    print('[crop] h: {}'.format(size))
+    print('[crop] y_offset: {}'.format(h_start))
+    print('[crop] x_offset: {}'.format(w_start))
     w_end = w_start + size
     h_end = h_start + size
     img = img[h_start:h_end, w_start:w_end, :]
@@ -253,8 +256,8 @@ def val(settings,
         crop_size=224):
     if crop_size > 0:
         target_size = settings.resize_short_size
-        img = resize_short(img, target_size)
-        img = crop_image(img, target_size=crop_size, center=True)
+        img = resize_short(img, target_size, settings)
+        img = crop_image(img, crop_size, True, settings)
 
     img = _bgr2rgb2CHW(img)
     return _standardize(img)
