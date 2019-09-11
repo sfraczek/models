@@ -47,6 +47,7 @@ def train_reader(settings, batch_size):
         "do_area_scale": True,
         "scale": [0.08, 1],
         "resize_short_size": 0,
+        "interpolation_method": "LINEAR",
         "mean": MEAN,
         "stddev": STDDEV
     }
@@ -74,6 +75,7 @@ def val_reader(settings, batch_size):
         "crop_enable": True,
         "scale": [scale, scale],
         "resize_short_size": settings.resize_short_size,
+        "interpolation_method": "LINEAR",
         "mean": MEAN,
         "stddev": STDDEV
     }
