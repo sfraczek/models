@@ -39,7 +39,6 @@ def train_reader(settings, batch_size):
                            settings.reader_thread_count, settings.random_seed)
 
     augmentation_config = {
-        "random_seed": 1,
         "type": "image",
         "flip_enable": True,
         "center": False,
@@ -69,7 +68,6 @@ def val_reader(settings, batch_size):
 
     scale = float(shape[1]) / settings.resize_short_size
     augmentation_config = {
-        "random_seed": 1,
         "type": "image",
         "flip_enable": False,
         "center": True,
