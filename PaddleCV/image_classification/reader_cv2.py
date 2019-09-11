@@ -87,8 +87,8 @@ def resize_short(img, target_size):
     resized = cv2.resize(
         img,
         (resized_width, resized_height),
-        interpolation=cv2.INTER_CUBIC
-    )
+        #interpolation=cv2.INTER_LANCZOS4
+        )
     return resized
 
 
@@ -175,7 +175,9 @@ def process_image(sample,
             img = rotate_image(img)
         if crop_size > 0:
             img = random_crop(img, settings)
-            img = cv2.resize(img, (crop_size, crop_size), interpolation=cv2.INTER_CUBIC)
+            img = cv2.resize(img, (crop_size, crop_size),
+                             #interpolation=cv2.INTER_LANCZOS4
+                             )
         if color_jitter:
             img = distort_color(img)
         if np.random.randint(0, 2) == 1:
