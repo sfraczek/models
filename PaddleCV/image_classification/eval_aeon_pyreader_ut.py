@@ -19,33 +19,36 @@ import math
 parser = argparse.ArgumentParser(description=__doc__)
 add_arg = functools.partial(add_arguments, argparser=parser)
 # yapf: disable
-add_arg('batch_size',       int,  1,                   "Minibatch size.")
-add_arg('use_gpu',          bool, False,               "Whether to use GPU or not.")
-add_arg('class_dim',        int,  1000,                "Class number.")
-add_arg('image_shape',      str,  "3,224,224",         "Input image size")
-add_arg('with_mem_opt',     bool, True,                "Whether to use memory optimization or not.")
-add_arg('pretrained_model', str,  None,                "Whether to use pretrained model.")
-add_arg('model',            str,  "ResNet50",          "Set the network to use.")
-add_arg('resize_short_size', int, 256,                 "Set resize short size")
-add_arg('iterations',       int,  100,                 "Quit after this many iterations")
-add_arg('data_dir',         str, "./data/ILSVRC2012/", "The ImageNet dataset root dir.")
+add_arg('batch_size',           int,  1,                   "Minibatch size.")
+add_arg('use_gpu',              bool, True,                "Whether to use GPU or not.")
+add_arg('class_dim',            int,  1000,                "Class number.")
+add_arg('image_shape',          str,  "3,224,224",         "Input image size")
+add_arg('total_images',         int,   50000,              "Validation set size.")
+add_arg('with_mem_opt',         bool, True,                "Whether to use memory optimization or not.")
+add_arg('pretrained_model',     str,  "/root/data/ILSVRC2012/ResNet50_pretrained/", "Whether to use pretrained model.")
+add_arg('model',                str,  "ResNet50",          "Set the network to use.")
+add_arg('resize_short_size',    int,  256,                 "Set resize short size")
+add_arg('iterations',           int,  100,                 "Quit after this many iterations")
+add_arg('data_dir',             str, "/root/data/ILSVRC2012/", "The ImageNet dataset root dir.")
+add_arg('cache_dir',            str, "",                   "Place where aeon will store cache")
+add_arg('reader_thread_count',  int, 12,                   "How many threads to allocate for reader")
+add_arg('random_seed',          int, 1,                    "Random seed. Choose 0 for non-deterministic.")
 # yapf: enable
 
 def compare_imgs(ref_data, out_data):
-    success = True
+    max_err = 0
     for ref, out in zip(ref_data, out_data):
         if not np.allclose(ref, out):
-            success = False
-            ref_l1 = np.linalg.norm(ref.flatten(), ord=1)
-            out_l1 = np.linalg.norm(out.flatten(), ord=1)
-            rtol=1e-05
-            atol=1e-08
-            diff = abs(ref_l1 - out_l1)
-            rel_err = diff / (atol + rtol * abs(ref_l1))
-            print("[L1] ref: {}, out: {}, diff: {}, rel_err: {}".format(
-                "%.6f"%ref_l1, "%.6f"%out_l1, "%.6f"%diff, "%.5f"%rel_err))
-    if not success:
-        print("Provided images are different!")
+            # ref_l1 = np.linalg.norm(ref.flatten(), ord=1)
+            # out_l1 = np.linalg.norm(out.flatten(), ord=1)
+            # rtol=1e-05
+            # atol=1e-08
+            # diff = abs(ref_l1 - out_l1)
+            # rel_err = diff / (atol + rtol * abs(ref_l1))
+            max_err = np.max(np.abs(ref - out))
+            # print("[L1] ref: {}, out: {}, diff: {}, rel_err: {}"
+            #       .format("%.6f"%ref_l1, "%.6f"%out_l1, "%.6f"%diff, "%.5f"%rel_err))
+    return max_err
 
 def run_infer(exe, batch_data, program, fetch_list, feeder):
     t1 = time.time()
@@ -96,46 +99,32 @@ def eval(args):
 
     pd_val_reader = paddle.batch(pd_reader.val(settings=args, data_dir=args.data_dir),
                                 batch_size=args.batch_size)
-    aeon_val_reader = aeon_reader.val_reader(settings=args, batch_size=args.batch_size)
+    aeon_val_reader = aeon_reader.val(settings=args, batch_size=args.batch_size)()
     feeder = fluid.DataFeeder(place=place, feed_list=[image, label])
 
-    batch_id = 0
     img_mean = np.array([0.485, 0.456, 0.406]).reshape((3, 1, 1))
     img_std = np.array([0.229, 0.224, 0.225]).reshape((3, 1, 1))
     img_mean = np.array(img_mean).reshape((3, 1, 1))
     img_std = np.array(img_std).reshape((3, 1, 1))
 
-    for pd_data in pd_val_reader():
-        batch_id += 1
-        aeon_data = aeon_val_reader.next()
+    for batch_id, pd_data in enumerate(pd_val_reader()):
+        aeon_data = next(aeon_val_reader)
 
         pd_images = [s[0] for s in pd_data]
+        aeon_images = [s[0] for s in aeon_data]
 
-        aeon_images = np.split(aeon_data[0][1], aeon_data[0][1].shape[0])
-        aeon_labels = aeon_data[1][1].flatten()
-
-        # for img in aeon_images:
-        #     img /= 255
-        #     img -= img_mean
-        #     img /= img_std
-        aeon_batch_data = [(i, l) for i, l in zip(aeon_images, aeon_labels)]
-
-        compare_imgs(pd_images, aeon_images)
+        max_in_img_err = compare_imgs(pd_images, aeon_images)
 
         pd_results = run_infer(exe, pd_data, test_program, fetch_list, feeder)
-        aeon_results = run_infer(exe, aeon_batch_data, test_program, fetch_list, feeder)
+        aeon_results = run_infer(exe, aeon_data, test_program, fetch_list, feeder)
 
-        loss_err = np.isclose(pd_results[1], aeon_results[1])
-        acc1_err = np.isclose(pd_results[2], aeon_results[2])
-        acc5_err = np.isclose(pd_results[3], aeon_results[3])
+        loss_err = np.max(abs(pd_results[1] - aeon_results[1]))
+        acc1_err = np.max(abs(pd_results[2] - aeon_results[2]))
+        acc5_err = np.max(abs(pd_results[3] - aeon_results[3]))
 
-        print("Testbatch {}, [pd-aeon] loss: [{}-{}]: {}\t,"
-              "acc1: [{}-{}]: {}\t, acc5: [{}-{}]: {}\t".format(
-              batch_id,
-              "%.5f"%pd_results[1] ,"%.5f"%aeon_results[1], loss_err,
-              "%.5f"%pd_results[2] ,"%.5f"%aeon_results[2], acc1_err,
-              "%.5f"%pd_results[3] ,"%.5f"%aeon_results[3], acc5_err))
-
+        print("Testbatch {},\tmax input img err: {},\tloss_err: {},\tacc1_err: {},\tacc5_err: {}"
+              .format(batch_id, "%.6f"%max_in_img_err, "%.6f"%loss_err, "%.6f"%acc1_err,
+                      "%.6f"%acc5_err))
         sys.stdout.flush()
 
         if batch_id == args.iterations:
