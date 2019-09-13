@@ -84,6 +84,8 @@ add_arg('resize_short_size',      int,     256,      "Set the resize_short_size"
 add_arg('dummy_data',      bool,     False,      "Use dummy data reader.")
 add_arg('cache_dir',           str, "",              "Place where aeon will store cache")
 add_arg('reader_thread_count', int, 12,              "How many threads to allocate for reader")
+add_arg('thread_affinity_low_bound',  int, 0,        "Lower bound for thread affinity")
+add_arg('thread_affinity_high_bound', int, 0,        "High bound for thread affinity")
 add_arg('random_seed',         int, 0,               "Random seed. Choose 0 for non-deterministic.")
 
 def optimizer_setting(params):

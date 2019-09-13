@@ -9,7 +9,13 @@ MEAN = [0.485, 0.456, 0.406]
 STDDEV = [0.229, 0.224, 0.225]
 
 
-def common_config(shape, cache_dir, data_dir, thread_count, random_seed):
+def common_config(shape,
+                  cache_dir,
+                  data_dir,
+                  thread_count,
+                  random_seed,
+                  thr_affinity_low_bound,
+                  thr_affinity_hi_bound):
     image_config = {
         "type": "image",
         "height": shape[1],
@@ -25,6 +31,8 @@ def common_config(shape, cache_dir, data_dir, thread_count, random_seed):
     config = dict()
     config['random_seed'] = random_seed
     config['decode_thread_count'] = thread_count
+    config['thread_affinity_low_bound'] = thr_affinity_low_bound
+    config['thread_affinity_high_bound'] = thr_affinity_hi_bound
     config['manifest_root'] = data_dir
     config['cache_directory'] = cache_dir
     config['etl'] = [image_config, label_config]
@@ -35,8 +43,13 @@ def common_config(shape, cache_dir, data_dir, thread_count, random_seed):
 
 def train_reader(settings, batch_size):
     shape = map(int, settings.image_shape.split(','))
-    config = common_config(shape, settings.cache_dir, settings.data_dir,
-                           settings.reader_thread_count, settings.random_seed)
+    config = common_config(shape,
+                           settings.cache_dir,
+                           settings.data_dir,
+                           settings.reader_thread_count,
+                           settings.random_seed,
+                           settings.thread_affinity_low_bound,
+                           settings.thread_affinity_high_bound)
 
     augmentation_config = {
         "type": "image",
@@ -64,8 +77,13 @@ def train_reader(settings, batch_size):
 
 def val_reader(settings, batch_size):
     shape = map(int, settings.image_shape.split(','))
-    config = common_config(shape, settings.cache_dir, settings.data_dir,
-                           settings.reader_thread_count, settings.random_seed)
+    config = common_config(shape,
+                           settings.cache_dir,
+                           settings.data_dir,
+                           settings.reader_thread_count,
+                           settings.random_seed,
+                           settings.thread_affinity_low_bound,
+                           settings.thread_affinity_high_bound)
 
     scale = float(shape[1]) / settings.resize_short_size
     augmentation_config = {
