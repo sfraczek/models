@@ -205,6 +205,15 @@ def image_mapper(**kwargs):
     """ image_mapper """
     return functools.partial(process_image, **kwargs)
 
+def _dummy_reader(sample,
+                  mode):
+    if mode == 'train' or mode == 'val':
+        return (sample[0], sample[1])
+    elif mode == 'test':
+        return (sample[0])
+
+
+
 def _reader_creator(settings,
                     file_list,
                     mode,
@@ -253,16 +262,12 @@ def _reader_creator(settings,
         color_jitter=color_jitter,
         rotate=rotate,
         crop_size=crop_size)
-    reader = paddle.reader.xmap_readers(
-        image_mapper, reader, THREAD, BUF_SIZE, order=False)
-    return reader
 
-def _dummy_reader(sample,
-                  mode):
-    if mode == 'train' or mode == 'val':
-        return (sample[0], sample[1])
-    elif mode == 'test':
-        return (sample[0])
+    if not settings.augment:
+        image_mapper = functools.partial(_dummy_reader, mode)
+    reader = paddle.reader.xmap_readers(
+        image_mapper, reader, settings.reader_thread_count, BUF_SIZE, order=False)
+    return reader
 
 
 def create_dummy_reader(settings,
@@ -304,7 +309,8 @@ def create_dummy_reader(settings,
                     yield (dummy_imgs[idx % BUF_SIZE])
 
     image_mapper = functools.partial(_dummy_reader, mode)
-    reader = paddle.reader.xmap_readers(image_mapper, _reader, THREAD, BUF_SIZE, order=True)
+    reader = paddle.reader.xmap_readers(image_mapper, _reader, settings.reader_thread_count,
+                                        BUF_SIZE, order=True)
     return reader
 
 def train(settings, data_dir=DATA_DIR, pass_id_as_seed=0):
