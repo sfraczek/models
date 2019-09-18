@@ -205,6 +205,7 @@ def image_mapper(**kwargs):
     """ image_mapper """
     return functools.partial(process_image, **kwargs)
 
+
 def _dummy_reader(sample,
                   mode):
     if mode == 'train' or mode == 'val':
@@ -212,6 +213,16 @@ def _dummy_reader(sample,
     elif mode == 'test':
         return (sample[0])
 
+
+def _simple_reader(sample,
+                   mode):
+    img_path = sample[0]
+    img = cv2.imread(img_path)
+
+    if mode == 'train' or mode == 'val':
+        return (img, sample[1])
+    elif mode == 'test':
+        return (img)
 
 
 def _reader_creator(settings,
@@ -264,7 +275,7 @@ def _reader_creator(settings,
         crop_size=crop_size)
 
     if not settings.augment:
-        image_mapper = functools.partial(_dummy_reader, mode)
+        image_mapper = functools.partial(_simple_reader, mode)
     reader = paddle.reader.xmap_readers(
         image_mapper, reader, settings.reader_thread_count, BUF_SIZE, order=False)
     return reader
