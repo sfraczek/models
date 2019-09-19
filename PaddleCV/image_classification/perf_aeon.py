@@ -23,6 +23,7 @@ add_arg('cache_dir',            str,    "", "Place where aeon will store cache")
 add_arg('reader_thread_count',  int,    12, "How many threads to allocate for reader")
 add_arg('random_seed',          int,    0, "Random seed. Choose 0 for non-deterministic.")
 add_arg('drop_last',            bool,   True, "Skip last batch if not full")
+add_arg('augment',              bool,   True, "Whether or not to perform image augmentation.")
 
 
 def perf(args):

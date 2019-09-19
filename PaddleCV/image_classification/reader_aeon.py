@@ -33,27 +33,66 @@ def common_config(shape, cache_dir, data_dir, thread_count, random_seed):
     return config
 
 
-def train_reader(settings, batch_size):
-    shape = map(int, settings.image_shape.split(','))
-    config = common_config(shape, settings.cache_dir, settings.data_dir,
-                           settings.reader_thread_count, settings.random_seed)
-
-    augmentation_config = {
+def simple_reader_config(shape, cache_dir, data_dir, thread_count, random_seed):
+    image_config = {
         "type": "image",
-        "flip_enable": True,
-        "center": False,
-        "crop_enable": True,
-        "horizontal_distortion": [3. / 4., 4. / 3.],
-        "do_area_scale": True,
-        "scale": [0.08, 1],
-        "resize_short_size": 0,
-        "interpolation_method": "LINEAR",
-        "mean": MEAN,
-        "stddev": STDDEV
+        "height": shape[1],
+        "width": shape[2],
+        "channels": shape[0],
+        "output_type": "uint8_t",
+        "channel_major": False,
+        "bgr_to_rgb": False
     }
 
-    config["shuffle_enable"] = True
-    config["shuffle_manifest"] = True
+    label_config = {"type": "label", "binary": False}
+
+    config = dict()
+    config['random_seed'] = random_seed
+    config['decode_thread_count'] = thread_count
+    config['manifest_root'] = data_dir
+    config['cache_directory'] = cache_dir
+    config['etl'] = [image_config, label_config]
+    config['iteration_mode'] = "ONCE"
+
+    return config
+
+
+def train_reader(settings, batch_size):
+    shape = map(int, settings.image_shape.split(','))
+
+    if settings.augment:
+        config = common_config(shape, settings.cache_dir, settings.data_dir,
+                           settings.reader_thread_count, settings.random_seed)
+
+        augmentation_config = {
+            "type": "image",
+            "flip_enable": True,
+            "center": False,
+            "crop_enable": True,
+            "horizontal_distortion": [3. / 4., 4. / 3.],
+            "do_area_scale": True,
+            "scale": [0.08, 1],
+            "resize_short_size": 0,
+            "interpolation_method": "LINEAR",
+            "mean": MEAN,
+            "stddev": STDDEV
+        }
+        config["shuffle_enable"] = True
+        config["shuffle_manifest"] = True
+    else:
+        config = simple_reader_config(shape, settings.cache_dir, settings.data_dir,
+                           settings.reader_thread_count, settings.random_seed)
+        augmentation_config = {
+            "type": "image",
+            "flip_enable": False,
+            "center": False,
+            "crop_enable": False,
+            "fixed_scaling_factor": 1
+        }
+        config["shuffle_enable"] = False
+        config["shuffle_manifest"] = False
+
+
     config['manifest_filename'] = os.path.join(settings.data_dir, TRAIN_LIST)
     config['augmentation'] = [augmentation_config]
     config['batch_size'] = batch_size
@@ -64,21 +103,34 @@ def train_reader(settings, batch_size):
 
 def val_reader(settings, batch_size):
     shape = map(int, settings.image_shape.split(','))
-    config = common_config(shape, settings.cache_dir, settings.data_dir,
+
+    if settings.augment:
+        config = common_config(shape, settings.cache_dir, settings.data_dir,
                            settings.reader_thread_count, settings.random_seed)
 
-    scale = float(shape[1]) / settings.resize_short_size
-    augmentation_config = {
-        "type": "image",
-        "flip_enable": False,
-        "center": True,
-        "crop_enable": True,
-        "scale": [scale, scale],
-        "resize_short_size": settings.resize_short_size,
-        "interpolation_method": "LINEAR",
-        "mean": MEAN,
-        "stddev": STDDEV
-    }
+        scale = float(shape[1]) / settings.resize_short_size
+        augmentation_config = {
+            "type": "image",
+            "flip_enable": False,
+            "center": True,
+            "crop_enable": True,
+            "scale": [scale, scale],
+            "resize_short_size": settings.resize_short_size,
+            "interpolation_method": "LINEAR",
+            "mean": MEAN,
+            "stddev": STDDEV
+        }
+    else:
+        config = simple_reader_config(shape, settings.cache_dir, settings.data_dir,
+                           settings.reader_thread_count, settings.random_seed)
+        augmentation_config = {
+            "type": "image",
+            "flip_enable": False,
+            "center": False,
+            "crop_enable": False,
+            "fixed_scaling_factor": 1
+        }
+
 
     config["shuffle_enable"] = False
     config["shuffle_manifest"] = False
