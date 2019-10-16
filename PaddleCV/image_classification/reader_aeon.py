@@ -2,6 +2,7 @@
 from aeon import DataLoader
 import numpy as np
 import os
+from PIL import Image
 
 VAL_LIST = "val-index.tsv"
 TRAIN_LIST = "train-index.tsv"
@@ -24,7 +25,7 @@ def common_config(shape, cache_dir, data_dir, thread_count, random_seed):
 
     config = dict()
     config['random_seed'] = random_seed
-    config['decode_thread_count'] = thread_count
+    config['cpu_list'] = "0-{}".format(thread_count - 1)
     config['manifest_root'] = data_dir
     config['cache_directory'] = cache_dir
     config['etl'] = [image_config, label_config]
@@ -62,7 +63,8 @@ def train_reader(settings, batch_size):
 
     if settings.augment:
         config = common_config(shape, settings.cache_dir, settings.data_dir,
-                           settings.reader_thread_count, settings.random_seed)
+                               settings.reader_thread_count,
+                               settings.random_seed)
 
         augmentation_config = {
             "type": "image",
@@ -73,15 +75,16 @@ def train_reader(settings, batch_size):
             "do_area_scale": True,
             "scale": [0.08, 1],
             "resize_short_size": 0,
-            "interpolation_method": "LINEAR",
+            "interpolation_method": "LANCZOS4",
             "mean": MEAN,
             "stddev": STDDEV
         }
         config["shuffle_enable"] = True
         config["shuffle_manifest"] = True
     else:
-        config = simple_reader_config(shape, settings.cache_dir, settings.data_dir,
-                           settings.reader_thread_count, settings.random_seed)
+        config = simple_reader_config(
+            shape, settings.cache_dir, settings.data_dir,
+            settings.reader_thread_count, settings.random_seed)
         augmentation_config = {
             "type": "image",
             "flip_enable": False,
@@ -91,7 +94,6 @@ def train_reader(settings, batch_size):
         }
         config["shuffle_enable"] = False
         config["shuffle_manifest"] = False
-
 
     config['manifest_filename'] = os.path.join(settings.data_dir, TRAIN_LIST)
     config['augmentation'] = [augmentation_config]
@@ -106,7 +108,8 @@ def val_reader(settings, batch_size):
 
     if settings.augment:
         config = common_config(shape, settings.cache_dir, settings.data_dir,
-                           settings.reader_thread_count, settings.random_seed)
+                               settings.reader_thread_count,
+                               settings.random_seed)
 
         scale = float(shape[1]) / settings.resize_short_size
         augmentation_config = {
@@ -116,13 +119,14 @@ def val_reader(settings, batch_size):
             "crop_enable": True,
             "scale": [scale, scale],
             "resize_short_size": settings.resize_short_size,
-            "interpolation_method": "LINEAR",
+            "interpolation_method": "LANCZOS4",
             "mean": MEAN,
             "stddev": STDDEV
         }
     else:
-        config = simple_reader_config(shape, settings.cache_dir, settings.data_dir,
-                           settings.reader_thread_count, settings.random_seed)
+        config = simple_reader_config(
+            shape, settings.cache_dir, settings.data_dir,
+            settings.reader_thread_count, settings.random_seed)
         augmentation_config = {
             "type": "image",
             "flip_enable": False,
@@ -130,7 +134,6 @@ def val_reader(settings, batch_size):
             "crop_enable": False,
             "fixed_scaling_factor": 1
         }
-
 
     config["shuffle_enable"] = False
     config["shuffle_manifest"] = False
@@ -166,6 +169,23 @@ def train(settings, batch_size, drop_last=False):
     return func
 
 
+id = 0
+def write_image(wimg, settings):
+    img_mean = np.array(MEAN).reshape((3, 1 ,1))
+    img_std = np.array(STDDEV).reshape((3, 1 ,1))
+    #  img_mean = np.array([0.485, 0.456, 0.406]).reshape((3, 1, 1))
+    #  img_std = np.array([0.229, 0.224, 0.225]).reshape((3, 1, 1))
+    shape = map(int, settings.image_shape.split(','))
+    wimg = wimg.reshape(shape)
+    wimg *= img_std
+    wimg += img_mean
+    wimg *=255
+    wimg = wimg.transpose(1,2,0).astype('uint8')
+    global id
+    Image.fromarray(wimg).save("aeon_{}.png".format(id))
+    id +=1
+
+
 def val(settings, batch_size, drop_last=False):
     batch_size = int(batch_size)
     if batch_size <= 0:
@@ -184,6 +204,7 @@ def val(settings, batch_size, drop_last=False):
             if batch < max_iter:
                 batch += 1
                 # tup is (('image',...),('label',...)) where ... stand is data
+                write_image(np.copy(tup[0][1]), settings)
                 yield zip(tup[0][1], tup[1][1])
 
     return func

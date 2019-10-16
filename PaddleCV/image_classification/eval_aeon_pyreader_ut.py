@@ -8,7 +8,7 @@ import sys
 import paddle
 import paddle.fluid as fluid
 import reader_aeon as aeon_reader
-import reader_cv2 as pd_reader
+import reader as pd_reader
 import argparse
 import functools
 import models
@@ -98,7 +98,7 @@ def eval(args):
 
     fluid.io.load_persistables(exe, pretrained_model)
 
-    pd_val_reader = paddle.batch(pd_reader.val(settings=args, data_dir=args.data_dir),
+    pd_val_reader = paddle.batch(pd_reader.val(data_dir=args.data_dir),
                                 batch_size=args.batch_size)
     aeon_val_reader = aeon_reader.val(settings=args, batch_size=args.batch_size)()
     feeder = fluid.DataFeeder(place=place, feed_list=[image, label])

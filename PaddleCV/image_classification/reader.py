@@ -26,7 +26,7 @@ np.random.seed(0)
 
 DATA_DIM = 224
 
-THREAD = 8
+THREAD = 1
 BUF_SIZE = 2048
 
 DATA_DIR = 'data/ILSVRC2012'
@@ -111,6 +111,16 @@ def distort_color(img):
     return img
 
 
+id = 0
+def write_image(wimg, img_mean, img_std):
+    wimg *= img_std
+    wimg += img_mean
+    wimg *=255
+    wimg = wimg.transpose(1,2,0).astype('uint8')
+    global id
+    Image.fromarray(wimg).save("reader_{}.png".format(id))
+    id +=1
+
 def process_image(sample, mode, color_jitter, rotate):
     img_path = sample[0]
 
@@ -133,6 +143,8 @@ def process_image(sample, mode, color_jitter, rotate):
     img = np.array(img).astype('float32').transpose((2, 0, 1)) / 255
     img -= img_mean
     img /= img_std
+
+    write_image(np.copy(img), np.copy(img_mean), np.copy(img_std))
 
     if mode == 'train' or mode == 'val':
         return img, sample[1]
