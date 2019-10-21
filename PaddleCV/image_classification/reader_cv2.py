@@ -165,10 +165,10 @@ def write_image2(name, wimg):#, img_mean, img_std):
     # wimg *=255
     # wimg = wimg.transpose(1,2,0).astype('uint8')
     # Image.fromarray(wimg).save("{}_reader_cv2.png".format(name))
-
+    wimg = np.reshape(wimg,(-1,1))
     with open('{}_reader_cv2.txt'.format(name),'w') as f:
         for i in range(0,wimg.size):
-            f.write('{}\n'.format(wimg[i]))
+            f.write("{}\n".format(wimg[i]))
 
 id = 0
 def process_image(sample,
