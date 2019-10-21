@@ -5,12 +5,12 @@ import os
 from PIL import Image
 
 VAL_LIST = "val-index.tsv"
-TRAIN_LIST = "train-index.tsv"
+TRAIN_LIST = "val-index.tsv"
 MEAN = [0.485, 0.456, 0.406]
 STDDEV = [0.229, 0.224, 0.225]
 
 
-def common_config(shape, cache_dir, data_dir, thread_count, random_seed):
+def common_config(shape, cache_dir, data_dir, cpu_list, random_seed):
     image_config = {
         "type": "image",
         "height": shape[1],
@@ -25,7 +25,7 @@ def common_config(shape, cache_dir, data_dir, thread_count, random_seed):
 
     config = dict()
     config['random_seed'] = random_seed
-    config['cpu_list'] = "0-{}".format(thread_count - 1)
+    config['cpu_list'] = cpu_list
     config['manifest_root'] = data_dir
     config['cache_directory'] = cache_dir
     config['etl'] = [image_config, label_config]
@@ -34,7 +34,7 @@ def common_config(shape, cache_dir, data_dir, thread_count, random_seed):
     return config
 
 
-def simple_reader_config(shape, cache_dir, data_dir, thread_count, random_seed):
+def simple_reader_config(shape, cache_dir, data_dir, cpu_list, random_seed):
     image_config = {
         "type": "image",
         "height": shape[1],
@@ -49,7 +49,7 @@ def simple_reader_config(shape, cache_dir, data_dir, thread_count, random_seed):
 
     config = dict()
     config['random_seed'] = random_seed
-    config['decode_thread_count'] = thread_count
+    config['cpu_list'] = cpu_list
     config['manifest_root'] = data_dir
     config['cache_directory'] = cache_dir
     config['etl'] = [image_config, label_config]
@@ -63,7 +63,7 @@ def train_reader(settings, batch_size):
 
     if settings.augment:
         config = common_config(shape, settings.cache_dir, settings.data_dir,
-                               settings.reader_thread_count,
+                               settings.cpu_list,
                                settings.random_seed)
 
         augmentation_config = {
@@ -71,20 +71,20 @@ def train_reader(settings, batch_size):
             "flip_enable": True,
             "center": False,
             "crop_enable": True,
-            "horizontal_distortion": [3. / 4., 4. / 3.],
+            "horizontal_distortion": [settings.lower_ratio, settings.upper_ratio],
             "do_area_scale": True,
-            "scale": [0.08, 1],
+            "scale": [settings.lower_scale, settings.upper_scale],
             "resize_short_size": 0,
             "interpolation_method": "LANCZOS4",
             "mean": MEAN,
             "stddev": STDDEV
         }
-        config["shuffle_enable"] = True
-        config["shuffle_manifest"] = True
+        config["shuffle_enable"] = False
+        config["shuffle_manifest"] = False
     else:
         config = simple_reader_config(
             shape, settings.cache_dir, settings.data_dir,
-            settings.reader_thread_count, settings.random_seed)
+            settings.cpu_list, settings.random_seed)
         augmentation_config = {
             "type": "image",
             "flip_enable": False,
@@ -108,7 +108,7 @@ def val_reader(settings, batch_size):
 
     if settings.augment:
         config = common_config(shape, settings.cache_dir, settings.data_dir,
-                               settings.reader_thread_count,
+                               settings.cpu_list,
                                settings.random_seed)
 
         scale = float(shape[1]) / settings.resize_short_size
@@ -118,15 +118,16 @@ def val_reader(settings, batch_size):
             "center": True,
             "crop_enable": True,
             "scale": [scale, scale],
-            "resize_short_size": settings.resize_short_size,
+            "resize_short_size": 0, #settings.resize_short_size,
             "interpolation_method": "LANCZOS4",
             "mean": MEAN,
             "stddev": STDDEV
         }
     else:
+        print("WARNING, THIS CRASHES")
         config = simple_reader_config(
             shape, settings.cache_dir, settings.data_dir,
-            settings.reader_thread_count, settings.random_seed)
+            settings.cpu_list, settings.random_seed)
         augmentation_config = {
             "type": "image",
             "flip_enable": False,
@@ -164,26 +165,25 @@ def train(settings, batch_size, drop_last=False):
             if batch < max_iter:
                 batch += 1
                 # tup is (('image',...),('label',...)) where ... stand is data
+                write_image(np.copy(tup[0][1]), settings)
                 yield zip(tup[0][1], tup[1][1])
 
     return func
 
 
-id = 0
+funny_id = 0
 def write_image(wimg, settings):
     img_mean = np.array(MEAN).reshape((3, 1 ,1))
     img_std = np.array(STDDEV).reshape((3, 1 ,1))
-    #  img_mean = np.array([0.485, 0.456, 0.406]).reshape((3, 1, 1))
-    #  img_std = np.array([0.229, 0.224, 0.225]).reshape((3, 1, 1))
     shape = map(int, settings.image_shape.split(','))
     wimg = wimg.reshape(shape)
     wimg *= img_std
     wimg += img_mean
     wimg *=255
     wimg = wimg.transpose(1,2,0).astype('uint8')
-    global id
-    Image.fromarray(wimg).save("aeon_{}.png".format(id))
-    id +=1
+    global funny_id
+    Image.fromarray(wimg).save("{}_aeon.png".format(funny_id))
+    funny_id +=1
 
 
 def val(settings, batch_size, drop_last=False):

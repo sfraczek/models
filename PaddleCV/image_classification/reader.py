@@ -29,7 +29,7 @@ DATA_DIM = 224
 THREAD = 1
 BUF_SIZE = 2048
 
-DATA_DIR = 'data/ILSVRC2012'
+DATA_DIR = ""# 'data/ILSVRC2012'
 
 img_mean = np.array([0.485, 0.456, 0.406]).reshape((3, 1, 1))
 img_std = np.array([0.229, 0.224, 0.225]).reshape((3, 1, 1))
@@ -39,7 +39,7 @@ def resize_short(img, target_size):
     percent = float(target_size) / min(img.size[0], img.size[1])
     resized_width = int(round(img.size[0] * percent))
     resized_height = int(round(img.size[1] * percent))
-    img = img.resize((resized_width, resized_height), Image.LANCZOS)
+    img = img.resize((resized_width, resized_height), Image.LANCZOS4)
     return img
 
 
@@ -74,11 +74,11 @@ def random_crop(img, size, scale=[0.08, 1.0], ratio=[3. / 4., 4. / 3.]):
     w = int(target_size * w)
     h = int(target_size * h)
 
-    i = np.random.randint(0, img.size[0] - w + 1)
-    j = np.random.randint(0, img.size[1] - h + 1)
+    i = 0 #np.random.randint(0, img.size[0] - w + 1)
+    j = 0 #np.random.randint(0, img.size[1] - h + 1)
 
     img = img.crop((i, j, i + w, j + h))
-    img = img.resize((size, size), Image.LANCZOS)
+    img = img.resize((size, size), Image.LANCZOS4)
     return img
 
 
@@ -111,17 +111,20 @@ def distort_color(img):
     return img
 
 
-id = 0
-def write_image(wimg, img_mean, img_std):
+funny_id_py = 0
+def write_image2(wimg, img_mean, img_std):
+    #  import pdb
+    #  pdb.set_trace()
     wimg *= img_std
     wimg += img_mean
     wimg *=255
     wimg = wimg.transpose(1,2,0).astype('uint8')
-    global id
-    Image.fromarray(wimg).save("reader_{}.png".format(id))
-    id +=1
+    global funny_id_py
+    Image.fromarray(wimg).save("reader_{}.png".format(funny_id_py))
+    funny_id_py +=1
 
 def process_image(sample, mode, color_jitter, rotate):
+
     img_path = sample[0]
 
     img = Image.open(img_path)
@@ -129,7 +132,7 @@ def process_image(sample, mode, color_jitter, rotate):
         if rotate: img = rotate_image(img)
         img = random_crop(img, DATA_DIM)
     else:
-        img = resize_short(img, target_size=256)
+        #img = resize_short(img, target_size=256)
         img = crop_image(img, target_size=DATA_DIM, center=True)
     if mode == 'train':
         if color_jitter:
@@ -144,7 +147,7 @@ def process_image(sample, mode, color_jitter, rotate):
     img -= img_mean
     img /= img_std
 
-    write_image(np.copy(img), np.copy(img_mean), np.copy(img_std))
+    write_image2(np.copy(img), np.copy(img_mean), np.copy(img_std))
 
     if mode == 'train' or mode == 'val':
         return img, sample[1]
@@ -200,7 +203,7 @@ def _reader_creator(file_list,
     mapper = functools.partial(
         process_image, mode=mode, color_jitter=color_jitter, rotate=rotate)
 
-    return paddle.reader.xmap_readers(mapper, reader, THREAD, BUF_SIZE)
+    return paddle.reader.xmap_readers(mapper, reader, THREAD, BUF_SIZE, order=True)
 
 
 def train(data_dir=DATA_DIR, pass_id_as_seed=1, infinite=False):
@@ -208,7 +211,7 @@ def train(data_dir=DATA_DIR, pass_id_as_seed=1, infinite=False):
     return _reader_creator(
         file_list,
         'train',
-        shuffle=True,
+        shuffle=False,
         color_jitter=False,
         rotate=False,
         data_dir=data_dir,

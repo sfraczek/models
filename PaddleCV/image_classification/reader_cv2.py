@@ -19,6 +19,7 @@ import functools
 import numpy as np
 import cv2
 import io
+from PIL import Image
 
 import paddle
 
@@ -28,9 +29,9 @@ np.random.seed(0)
 DATA_DIM = 224
 
 THREAD = 8
-BUF_SIZE = 2048
+BUF_SIZE = 1
 
-DATA_DIR = './data/ILSVRC2012'
+DATA_DIR = '' #'./data/ILSVRC2012'
 
 img_mean = np.array([0.485, 0.456, 0.406]).reshape((3, 1, 1))
 img_std = np.array([0.229, 0.224, 0.225]).reshape((3, 1, 1))
@@ -48,9 +49,10 @@ def rotate_image(img):
 def random_crop(img, settings, scale=None, ratio=None):
     """ random_crop """
     lower_scale = settings.lower_scale
+    upper_scale = settings.upper_scale
     lower_ratio = settings.lower_ratio
     upper_ratio = settings.upper_ratio
-    scale = [lower_scale, 1.0] if scale is None else scale
+    scale = [lower_scale, upper_scale] if scale is None else scale
     ratio = [lower_ratio, upper_ratio] if ratio is None else ratio
 
     aspect_ratio = math.sqrt(np.random.uniform(*ratio))
@@ -68,8 +70,10 @@ def random_crop(img, settings, scale=None, ratio=None):
     target_size = math.sqrt(target_area)
     w = int(target_size * w)
     h = int(target_size * h)
-    i = np.random.randint(0, img.shape[0] - h + 1)
-    j = np.random.randint(0, img.shape[1] - w + 1)
+    i = 0#np.random.randint(0, img.shape[0] - h + 1)
+    j = 0#np.random.randint(0, img.shape[1] - w + 1)
+    #import pdb
+    #pdb.set_trace()
 
     img = img[i:i + h, j:j + w, :]
     return img
@@ -87,7 +91,7 @@ def resize_short(img, target_size):
     resized = cv2.resize(
         img,
         (resized_width, resized_height),
-        #interpolation=cv2.INTER_LANCZOS4
+        interpolation=cv2.INTER_LANCZOS4
         )
     return resized
 
@@ -153,7 +157,20 @@ def create_mixup_reader(settings, rd):
 
     return mixup_reader
 
+def write_image2(name, wimg):#, img_mean, img_std):
+    #  import pdb
+    #  pdb.set_trace()
+    # wimg *= img_std
+    # wimg += img_mean
+    # wimg *=255
+    # wimg = wimg.transpose(1,2,0).astype('uint8')
+    # Image.fromarray(wimg).save("{}_reader_cv2.png".format(name))
 
+    with open('{}_reader_cv2.txt'.format(name),'w') as f:
+        for i in range(0,wimg.size):
+            f.write('{}\n'.format(wimg[i]))
+
+id = 0
 def process_image(sample,
                   settings,
                   mode,
@@ -163,25 +180,32 @@ def process_image(sample,
                   mean=None,
                   std=None):
     """ process_image """
+    global id
 
     mean = [0.485, 0.456, 0.406] if mean is None else mean
     std = [0.229, 0.224, 0.225] if std is None else std
 
     img_path = sample[0]
     img = cv2.imread(img_path)
+    write_image2("{}_opened".format(id), np.copy(img))#, np.copy(img_mean), np.copy(img_std))
 
     if mode == 'train':
         if rotate:
             img = rotate_image(img)
+            write_image2("{}_rotated".format(id), np.copy(img))#, np.copy(img_mean), np.copy(img_std))
         if crop_size > 0:
             img = random_crop(img, settings)
+            write_image2("{}_cropped".format(id), np.copy(img))#, np.copy(img_mean), np.copy(img_std))
             img = cv2.resize(img, (crop_size, crop_size),
-                             #interpolation=cv2.INTER_LANCZOS4
+                             interpolation=cv2.INTER_LANCZOS4
                              )
+            write_image2("{}_resized".format(id), np.copy(img))#, np.copy(img_mean), np.copy(img_std))
         if color_jitter:
             img = distort_color(img)
-        if np.random.randint(0, 2) == 1:
+            write_image2("{}_distorted".format(id), np.copy(img))#, np.copy(img_mean), np.copy(img_std))
+        if True: #np.random.randint(0, 2) == 1:
             img = img[:, ::-1, :]
+            write_image2("{}_flipped".format(id), np.copy(img))#, np.copy(img_mean), np.copy(img_std))
     else:
         if crop_size > 0:
             target_size = settings.resize_short_size
@@ -190,10 +214,13 @@ def process_image(sample,
             img = crop_image(img, target_size=crop_size, center=True)
 
     img = img[:, :, ::-1].astype('float32').transpose((2, 0, 1)) / 255
+    write_image2("{}_bgr2rgb".format(id), np.copy(img))#, np.copy(img_mean), np.copy(img_std))
     img_mean = np.array(mean).reshape((3, 1, 1))
     img_std = np.array(std).reshape((3, 1, 1))
     img -= img_mean
     img /= img_std
+    write_image2("{}_standardized".format(id), np.copy(img))#, np.copy(img_mean), np.copy(img_std))
+    id+=1
 
     if mode == 'train' or mode == 'val':
         return (img, sample[1])
@@ -277,7 +304,7 @@ def _reader_creator(settings,
     if not settings.augment:
         image_mapper = functools.partial(_simple_reader, mode)
     reader = paddle.reader.xmap_readers(
-        image_mapper, reader, settings.reader_thread_count, BUF_SIZE, order=False)
+        image_mapper, reader, 1, BUF_SIZE, order=False)
     return reader
 
 
@@ -320,17 +347,17 @@ def create_dummy_reader(settings,
                     yield (dummy_imgs[idx % BUF_SIZE])
 
     image_mapper = functools.partial(_dummy_reader, mode)
-    reader = paddle.reader.xmap_readers(image_mapper, _reader, settings.reader_thread_count,
+    reader = paddle.reader.xmap_readers(image_mapper, _reader, 1,
                                         BUF_SIZE, order=True)
     return reader
 
 def train(settings, data_dir=DATA_DIR, pass_id_as_seed=0):
-    file_list = os.path.join(data_dir, 'train_list.txt')
+    file_list = os.path.join(data_dir, 'val_list.txt')
     reader = _reader_creator(
         settings,
         file_list,
         'train',
-        shuffle=True,
+        shuffle=False,
         color_jitter=False,
         rotate=False,
         data_dir=data_dir,

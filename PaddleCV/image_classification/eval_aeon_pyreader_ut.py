@@ -8,7 +8,7 @@ import sys
 import paddle
 import paddle.fluid as fluid
 import reader_aeon as aeon_reader
-import reader as pd_reader
+import reader_cv2 as pd_reader
 import argparse
 import functools
 import models
@@ -31,22 +31,36 @@ add_arg('resize_short_size',    int,  256,                 "Set resize short siz
 add_arg('iterations',           int,  100,                 "Quit after this many iterations")
 add_arg('data_dir',             str, "/root/data/ILSVRC2012/", "The ImageNet dataset root dir.")
 add_arg('cache_dir',            str, "",                   "Place where aeon will store cache")
-add_arg('reader_thread_count',  int, 12,                   "How many threads to allocate for reader")
+add_arg('cpu_list',             str, "0",                   "How many threads to allocate for reader")
 add_arg('random_seed',          int, 1,                    "Random seed. Choose 0 for non-deterministic.")
 add_arg('augment',              bool, True,                "Enables augmentations")
+add_arg('use_mixup',            bool, False,               "don't change this")
+add_arg('dummy_data',            bool, False,               "don't change this")
+add_arg('lower_scale',            float, 3./4.,               "don't change this")
+add_arg('upper_scale',            float, 3./4.,               "don't change this")
+add_arg('lower_ratio',            float, 0.5,               "don't change this")
+add_arg('upper_ratio',            float, 0.5,               "don't change this")
 # yapf: enable
 
+id = 0
 def compare_imgs(ref_data, out_data):
+    global id
     max_err = 0
-    for ref, out in zip(ref_data, out_data):
-        if not np.allclose(ref, out):
+    for ref, out in zip(np.reshape(ref_data,(1,-1)), np.reshape(out_data,(1,-1))):
+        with open('ref_{}.txt'.format(id),'w') as f1, open('out_{}.txt'.format(id),'w') as f2, open('diff_{}.txt'.format(id),'w') as f3:
+            for i in range(0,ref.size):
+                f1.write('{}\n'.format(ref[i]))
+                f2.write('{}\n'.format(out[i]))
+                f3.write('{}\n'.format(ref[i]-out[i]));
+    id += 1
+        #if not np.allclose(ref, out):
             # ref_l1 = np.linalg.norm(ref.flatten(), ord=1)
             # out_l1 = np.linalg.norm(out.flatten(), ord=1)
             # rtol=1e-05
             # atol=1e-08
             # diff = abs(ref_l1 - out_l1)
             # rel_err = diff / (atol + rtol * abs(ref_l1))
-            max_err = np.max(np.abs(ref - out))
+    max_err = np.max(np.abs(ref - out))
             # print("[L1] ref: {}, out: {}, diff: {}, rel_err: {}"
             #       .format("%.6f"%ref_l1, "%.6f"%out_l1, "%.6f"%diff, "%.5f"%rel_err))
     return max_err
@@ -98,15 +112,10 @@ def eval(args):
 
     fluid.io.load_persistables(exe, pretrained_model)
 
-    pd_val_reader = paddle.batch(pd_reader.val(data_dir=args.data_dir),
+    pd_val_reader = paddle.batch(pd_reader.train(settings=args, data_dir=args.data_dir),
                                 batch_size=args.batch_size)
-    aeon_val_reader = aeon_reader.val(settings=args, batch_size=args.batch_size)()
+    aeon_val_reader = aeon_reader.train(settings=args, batch_size=args.batch_size)()
     feeder = fluid.DataFeeder(place=place, feed_list=[image, label])
-
-    img_mean = np.array([0.485, 0.456, 0.406]).reshape((3, 1, 1))
-    img_std = np.array([0.229, 0.224, 0.225]).reshape((3, 1, 1))
-    img_mean = np.array(img_mean).reshape((3, 1, 1))
-    img_std = np.array(img_std).reshape((3, 1, 1))
 
     for batch_id, pd_data in enumerate(pd_val_reader()):
         aeon_data = next(aeon_val_reader)
