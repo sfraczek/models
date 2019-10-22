@@ -79,11 +79,11 @@ add_arg('in_img_path',       str,  None,          'Path to input img file to use
 add_arg('rotation_angle',     int, 5,              'The angle the image will be rotated.')
 add_arg('random_crop_aspect_ratio', float, 0.85,   'The aspect ratio for random cropping.')
 add_arg('area_scale',           float, 0.2,        'The area scale coefficient.')
-add_arg('crop_y_offset',        int,   50,         'The y_offset for random croping.')
-add_arg('crop_x_offset',        int,   50,         'The x_offset for random croping.')
+add_arg('crop_y_offset',        int,   None,         'The y_offset for random croping.')
+add_arg('crop_x_offset',        int,   None,         'The x_offset for random croping.')
 add_arg('flip',                 bool,  True,       'Whether to do image horizontall flipping.')
 add_arg('interpolation',        str,  'LINEAR',    'Interpolation method to use in resizing.')
-add_arg('output_filename',      str,  'augment_output',    'Output file name.')
+add_arg('output_filename',      str,  'augment_output_linear',    'Output file name.')
 
 #-------------------------------------------------------------------------------
 #           IMAGE PROCESSING HELPERS
@@ -158,6 +158,8 @@ def resize_short(img, target_size, settings):
     percent = float(target_size) / min(img.shape[0], img.shape[1])
     resized_width = int(round(img.shape[1] * percent))
     resized_height = int(round(img.shape[0] * percent))
+    print('[resize_short] resized_width: {}'.format(resized_width))
+    print('[resize_short] resized_height: {}'.format(resized_height))
     resized = cv2.resize(
         img,
         (resized_width, resized_height),
@@ -183,8 +185,8 @@ def crop_image(img, target_size, center, settings):
 
     print('[crop] w: {}'.format(size))
     print('[crop] h: {}'.format(size))
-    print('[crop] y_offset: {}'.format(h_start))
     print('[crop] x_offset: {}'.format(w_start))
+    print('[crop] y_offset: {}'.format(h_start))
     w_end = w_start + size
     h_end = h_start + size
     img = img[h_start:h_end, w_start:w_end, :]
@@ -257,7 +259,9 @@ def val(settings,
     if crop_size > 0:
         target_size = settings.resize_short_size
         img = resize_short(img, target_size, settings)
-        img = crop_image(img, crop_size, True, settings)
+        print('[val] resized image shape: {}'.format(img.shape))
+        img = crop_image(img, crop_size, center=True, settings=settings)
+        print('[val] center cropped image shape: {}'.format(img.shape))
 
     img = _bgr2rgb2CHW(img)
     return _standardize(img)
