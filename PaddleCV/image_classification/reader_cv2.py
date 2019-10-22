@@ -75,6 +75,7 @@ def random_crop(img, settings, scale=None, ratio=None):
     #import pdb
     #pdb.set_trace()
 
+    print("cropbox {},{},{},{}".format(j,i,w,h))
     img = img[i:i + h, j:j + w, :]
     return img
 
@@ -157,15 +158,19 @@ def create_mixup_reader(settings, rd):
 
     return mixup_reader
 
-def write_image2(name, wimg):#, img_mean, img_std):
-    #  import pdb
-    #  pdb.set_trace()
-    # wimg *= img_std
-    # wimg += img_mean
-    # wimg *=255
-    # wimg = wimg.transpose(1,2,0).astype('uint8')
-    # Image.fromarray(wimg).save("{}_reader_cv2.png".format(name))
-    wimg = np.reshape(wimg,(-1,1))
+id2 = 0
+def save_image(wimg, img_mean, img_std):
+    global id2;
+    wimg *= img_std
+    wimg += img_mean
+    wimg *=255
+    wimg = wimg.transpose(1,2,0).astype('uint8')
+    Image.fromarray(wimg).save("{}_reader_cv2.png".format(id2))
+    id2 += 1
+
+
+def write_image2(name, wimg):
+    wimg = wimg.flatten()
     with open('{}_reader_cv2.txt'.format(name),'w') as f:
         for i in range(0,wimg.size):
             f.write("{}\n".format(wimg[i]))
@@ -213,13 +218,17 @@ def process_image(sample,
 
             img = crop_image(img, target_size=crop_size, center=True)
 
-    img = img[:, :, ::-1].astype('float32').transpose((2, 0, 1)) / 255
+    # import ipdb
+    # ipdb.set_trace()
+    img = img[:, :, ::-1].astype('float32').transpose((2, 0, 1))
     write_image2("{}_bgr2rgb".format(id), np.copy(img))#, np.copy(img_mean), np.copy(img_std))
+    img /= 255
     img_mean = np.array(mean).reshape((3, 1, 1))
     img_std = np.array(std).reshape((3, 1, 1))
     img -= img_mean
     img /= img_std
     write_image2("{}_standardized".format(id), np.copy(img))#, np.copy(img_mean), np.copy(img_std))
+    save_image(np.copy(img), img_mean, img_std);
     id+=1
 
     if mode == 'train' or mode == 'val':
@@ -281,6 +290,8 @@ def _reader_creator(settings,
             else:
                 lines = full_lines
 
+            print("data_dir ", data_dir)
+            print("file_list ", file_list)
             for line in lines:
                 if mode == 'train' or mode == 'val':
                     img_path, label = line.split()

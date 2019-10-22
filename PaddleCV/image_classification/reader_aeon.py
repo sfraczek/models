@@ -31,6 +31,8 @@ def common_config(shape, cache_dir, data_dir, cpu_list, random_seed):
     config['etl'] = [image_config, label_config]
     config['iteration_mode'] = "ONCE"
 
+    print("manifest_root", config['manifest_root'])
+
     return config
 
 
@@ -98,6 +100,7 @@ def train_reader(settings, batch_size):
     config['manifest_filename'] = os.path.join(settings.data_dir, TRAIN_LIST)
     config['augmentation'] = [augmentation_config]
     config['batch_size'] = batch_size
+    print("manifest_filename",config['manifest_filename'])
 
     dl = DataLoader(config)
     return dl

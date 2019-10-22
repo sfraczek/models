@@ -78,7 +78,7 @@ def random_crop(img, size, scale=[0.08, 1.0], ratio=[3. / 4., 4. / 3.]):
     j = 0 #np.random.randint(0, img.size[1] - h + 1)
 
     img = img.crop((i, j, i + w, j + h))
-    img = img.resize((size, size), Image.LANCZOS4)
+    img = img.resize((size, size), Image.LANCZOS)
     return img
 
 
