@@ -27,6 +27,7 @@ import logging
 
 import paddle
 import paddle.fluid as fluid
+from paddle.fluid.io import save_inference_model
 import reader
 import models
 from utils import *
@@ -174,6 +175,12 @@ def eval(args):
             parallel_id = []
             parallel_data = []
             real_iter += 1
+        break
+
+    a = [image.name, label.name]
+    t = [avg_cost, acc_top1, acc_top5]
+    save_inference_model(params_filename='params', model_filename='__model__', dirname="output", feeded_var_names=[image.name], target_vars=t, executor=exe, main_program=test_program)
+
 
     test_loss = np.sum(test_info[0]) / cnt
     test_acc1 = np.sum(test_info[1]) / cnt
