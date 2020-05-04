@@ -179,7 +179,7 @@ def eval(args):
 
     a = [image.name, label.name]
     t = [avg_cost, acc_top1, acc_top5]
-    save_inference_model(params_filename='params', model_filename='__model__', dirname="output", feeded_var_names=[image.name], target_vars=t, executor=exe, main_program=test_program)
+    save_inference_model(params_filename='params', model_filename='__model__', dirname="output", feeded_var_names=a, target_vars=t, executor=exe, main_program=test_program)
 
 
     test_loss = np.sum(test_info[0]) / cnt
