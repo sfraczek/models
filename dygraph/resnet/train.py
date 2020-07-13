@@ -46,6 +46,8 @@ def parse_args():
         "-e", "--epoch", default=120, type=int, help="set epoch")
     parser.add_argument(
         "-b", "--batch_size", default=32, type=int, help="set epoch")
+    parser.add_argument("--use_mkldnn", action="store_true", help="Run using MKLDNN.")
+    parser.add_argument("--use_gpu", action="store_true", help="Run using CUDA.")
     parser.add_argument("--ce", action="store_true", help="run ce")
 
     # NOTE:used in benchmark
@@ -174,7 +176,8 @@ class ConvBNLayer(fluid.dygraph.Layer):
                  filter_size,
                  stride=1,
                  groups=1,
-                 act=None):
+                 act=None,
+                 use_mkldnn=False):
         super(ConvBNLayer, self).__init__()
 
         self._conv = Conv2D(
@@ -185,9 +188,10 @@ class ConvBNLayer(fluid.dygraph.Layer):
             padding=(filter_size - 1) // 2,
             groups=groups,
             act=None,
-            bias_attr=False)
+            bias_attr=False,
+            use_mkldnn=use_mkldnn)
 
-        self._batch_norm = BatchNorm(num_filters, act=act)
+        self._batch_norm = BatchNorm(num_filters, act=act, use_mkldnn=use_mkldnn)
 
     def forward(self, inputs):
         y = self._conv(inputs)
@@ -197,32 +201,37 @@ class ConvBNLayer(fluid.dygraph.Layer):
 
 
 class BottleneckBlock(fluid.dygraph.Layer):
-    def __init__(self, num_channels, num_filters, stride, shortcut=True):
+    def __init__(self, num_channels, num_filters, stride, shortcut=True, use_mkldnn=False):
         super(BottleneckBlock, self).__init__()
+        self._use_mkldnn=use_mkldnn
 
         self.conv0 = ConvBNLayer(
             num_channels=num_channels,
             num_filters=num_filters,
             filter_size=1,
-            act='relu')
+            act='relu',
+            use_mkldnn=use_mkldnn)
         self.conv1 = ConvBNLayer(
             num_channels=num_filters,
             num_filters=num_filters,
             filter_size=3,
             stride=stride,
-            act='relu')
+            act='relu',
+            use_mkldnn=use_mkldnn)
         self.conv2 = ConvBNLayer(
             num_channels=num_filters,
             num_filters=num_filters * 4,
             filter_size=1,
-            act=None)
+            act=None,
+            use_mkldnn=use_mkldnn)
 
         if not shortcut:
             self.short = ConvBNLayer(
                 num_channels=num_channels,
                 num_filters=num_filters * 4,
                 filter_size=1,
-                stride=stride)
+                stride=stride,
+                use_mkldnn=use_mkldnn)
 
         self.shortcut = shortcut
 
@@ -238,14 +247,14 @@ class BottleneckBlock(fluid.dygraph.Layer):
         else:
             short = self.short(inputs)
 
-        y = fluid.layers.elementwise_add(x=short, y=conv2)
+        y = fluid.layers.elementwise_add(x=short, y=conv2, use_mkldnn=self._use_mkldnn)
 
         layer_helper = LayerHelper(self.full_name(), act='relu')
         return layer_helper.append_activation(y)
 
 
 class ResNet(fluid.dygraph.Layer):
-    def __init__(self, layers=50, class_dim=102):
+    def __init__(self, use_mkldnn, layers=50, class_dim=102):
         super(ResNet, self).__init__()
 
         self.layers = layers
@@ -263,9 +272,9 @@ class ResNet(fluid.dygraph.Layer):
         num_filters = [64, 128, 256, 512]
 
         self.conv = ConvBNLayer(
-            num_channels=3, num_filters=64, filter_size=7, stride=2, act='relu')
+            num_channels=3, num_filters=64, filter_size=7, stride=2, act='relu', use_mkldnn=use_mkldnn)
         self.pool2d_max = Pool2D(
-            pool_size=3, pool_stride=2, pool_padding=1, pool_type='max')
+            pool_size=3, pool_stride=2, pool_padding=1, pool_type='max', use_mkldnn=use_mkldnn)
 
         self.bottleneck_block_list = []
         for block in range(len(depth)):
@@ -278,12 +287,13 @@ class ResNet(fluid.dygraph.Layer):
                         if i == 0 else num_filters[block] * 4,
                         num_filters=num_filters[block],
                         stride=2 if i == 0 and block != 0 else 1,
-                        shortcut=shortcut))
+                        shortcut=shortcut,
+                        use_mkldnn=use_mkldnn))
                 self.bottleneck_block_list.append(bottleneck_block)
                 shortcut = True
 
         self.pool2d_avg = Pool2D(
-            pool_size=7, pool_type='avg', global_pooling=True)
+            pool_size=7, pool_type='avg', global_pooling=True, use_mkldnn=use_mkldnn)
 
         self.pool2d_avg_output = num_filters[len(num_filters) - 1] * 4 * 1 * 1
 
@@ -295,7 +305,7 @@ class ResNet(fluid.dygraph.Layer):
             class_dim,
             act='softmax',
             param_attr=fluid.param_attr.ParamAttr(
-                initializer=fluid.initializer.Uniform(-stdv, stdv)))
+                initializer=fluid.initializer.Uniform(-stdv, stdv)), use_mkldnn=use_mkldnn)
 
     def forward(self, inputs):
         y = self.conv(inputs)
@@ -342,7 +352,7 @@ def eval(model, data):
         total_acc5 += acc_top5.numpy()
         total_sample += 1
 
-        if batch_id % 10 == 0:
+        if True or batch_id % 10 == 0:
             print("test | batch step %d, acc1 %0.3f acc5 %0.3f" % \
                   ( batch_id, total_acc1 / total_sample, total_acc5 / total_sample))
     if args.ce:
@@ -354,8 +364,10 @@ def eval(model, data):
 
 def train_resnet():
     epoch = args.epoch
-    place = fluid.CUDAPlace(fluid.dygraph.parallel.Env().dev_id) \
-        if args.use_data_parallel else fluid.CUDAPlace(0)
+    place = fluid.CPUPlace()
+    if args.use_gpu:
+        place = fluid.CUDAPlace(fluid.dygraph.parallel.Env().dev_id) \
+            if args.use_data_parallel else fluid.CUDAPlace(0)
     with fluid.dygraph.guard(place):
         if args.ce:
             print("ce mode")
@@ -367,7 +379,7 @@ def train_resnet():
         if args.use_data_parallel:
             strategy = fluid.dygraph.parallel.prepare_context()
 
-        resnet = ResNet(class_dim=args.class_dim)
+        resnet = ResNet(class_dim=args.class_dim, use_mkldnn=args.use_mkldnn)
         optimizer = optimizer_setting(parameter_list=resnet.parameters())
 
         if args.use_data_parallel:
@@ -459,7 +471,7 @@ def train_resnet():
 
                 train_batch_cost = time.time() - batch_start
                 total_batch_num = total_batch_num + 1  #this is for benchmark
-                if batch_id % 10 == 0:
+                if True or batch_id % 10 == 0:
                     print(
                         "[Epoch %d, batch %d] loss %.5f, acc1 %.5f, acc5 %.5f, batch_cost: %.5f s, reader_cost: %.5f s"
                         % (eop, batch_id, total_loss / total_sample,
