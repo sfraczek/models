@@ -35,7 +35,6 @@ def parse_args():
     )
     parser.add_argument("-e", "--epoch", default=5, type=int, help="set epoch")
     parser.add_argument("--ce", action="store_true", help="run ce")
-    parser.add_argument("--use_mkldnn", action="store_true", help="Run using MKLDNN.")
     parser.add_argument("--cpu", action="store_true", help="Run using CPU.")
     args = parser.parse_args()
     return args
@@ -57,7 +56,6 @@ class SimpleImgConvPool(fluid.dygraph.Layer):
                  conv_groups=1,
                  act=None,
                  use_cudnn=False,
-                 use_mkldnn=True,
                  param_attr=None,
                  bias_attr=None):
         super(SimpleImgConvPool, self).__init__()
@@ -73,8 +71,7 @@ class SimpleImgConvPool(fluid.dygraph.Layer):
             param_attr=None,
             bias_attr=None,
             act=act,
-            use_cudnn=use_cudnn,
-            use_mkldnn=use_mkldnn)
+            use_cudnn=use_cudnn)
 
         self._pool2d = Pool2D(
             pool_size=pool_size,
@@ -82,8 +79,7 @@ class SimpleImgConvPool(fluid.dygraph.Layer):
             pool_stride=pool_stride,
             pool_padding=pool_padding,
             global_pooling=global_pooling,
-            use_cudnn=use_cudnn,
-            use_mkldnn=use_mkldnn)
+            use_cudnn=use_cudnn)
 
     def forward(self, inputs):
         x = self._conv2d(inputs)
@@ -92,15 +88,14 @@ class SimpleImgConvPool(fluid.dygraph.Layer):
 
 
 class MNIST(fluid.dygraph.Layer):
-    def __init__(self, 
-                 use_mkldnn=False):
+    def __init__(self):
         super(MNIST, self).__init__()
 
         self._simple_img_conv_pool_1 = SimpleImgConvPool(
-            1, 20, 5, 2, 2, act="relu", use_mkldnn=use_mkldnn)
+            1, 20, 5, 2, 2, act="relu")
 
         self._simple_img_conv_pool_2 = SimpleImgConvPool(
-            20, 50, 5, 2, 2, act="relu", use_mkldnn=use_mkldnn)
+            20, 50, 5, 2, 2, act="relu")
 
         self.pool_2_shape = 50 * 4 * 4
         SIZE = 10
@@ -111,7 +106,7 @@ class MNIST(fluid.dygraph.Layer):
             param_attr=fluid.param_attr.ParamAttr(
                 initializer=fluid.initializer.NormalInitializer(
                     loc=0.0, scale=scale)),
-            act="softmax", use_mkldnn=use_mkldnn)
+            act="softmax")
 
     def forward(self, inputs, label=None):
         x = self._simple_img_conv_pool_1(inputs)
@@ -154,14 +149,14 @@ def test_mnist(reader, model, batch_size):
     return avg_loss_val_mean, acc_val_mean
 
 
-def inference_mnist(use_mkldnn=False):
-    if args.use_mkldnn or args.cpu:
+def inference_mnist():
+    if args.cpu:
         place = fluid.CPUPlace()
     else:
         place = fluid.CUDAPlace(fluid.dygraph.parallel.Env().dev_id) \
         if args.use_data_parallel else fluid.CUDAPlace(0)
     with fluid.dygraph.guard(place):
-        mnist_infer = MNIST(args.use_mkldnn)
+        mnist_infer = MNIST()
         # load checkpoint
         model_dict, _ = fluid.load_dygraph("save_temp")
         mnist_infer.set_dict(model_dict)
@@ -189,7 +184,7 @@ def train_mnist(args):
     epoch_num = args.epoch
     BATCH_SIZE = 64
 
-    if args.use_mkldnn or args.cpu:
+    if args.cpu:
         place = fluid.CPUPlace()
     else:
         place = fluid.CUDAPlace(fluid.dygraph.parallel.Env().dev_id) \
@@ -204,7 +199,7 @@ def train_mnist(args):
 
         if args.use_data_parallel:
             strategy = fluid.dygraph.parallel.prepare_context()
-        mnist = MNIST(args.use_mkldnn)
+        mnist = MNIST()
         adam = AdamOptimizer(
             learning_rate=0.001, parameter_list=mnist.parameters())
         if args.use_data_parallel:
@@ -252,8 +247,6 @@ def train_mnist(args):
                 if batch_id % 100 == 0:
                     print("Loss at epoch {} step {}: {:}".format(
                         epoch, batch_id, avg_loss.numpy()))
-#                if batch_id == 1:
-#                    exit()
 
             mnist.eval()
             test_cost, test_acc = test_mnist(test_loader, mnist, BATCH_SIZE)
@@ -272,7 +265,7 @@ def train_mnist(args):
 
             print("checkpoint saved")
 
-            inference_mnist(args.use_mkldnn)
+            inference_mnist()
 
 
 if __name__ == '__main__':
