@@ -66,7 +66,7 @@ class ConvBNLayer(fluid.dygraph.Layer):
         y = self._conv(inputs)
         y = self._batch_norm(y)
         if if_act:
-            y = fluid.layers.relu6(y)
+            y = fluid.layers.relu6(y, use_mkldnn=True)
         return y
 
 
