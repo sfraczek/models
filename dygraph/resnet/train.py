@@ -239,9 +239,9 @@ class BottleneckBlock(fluid.dygraph.Layer):
         else:
             short = self.short(inputs)
 
-        y = fluid.layers.elementwise_add(x=short, y=conv2)
+        y = fluid.layers.elementwise_add(x=short, y=conv2, use_mkldnn=True)
 
-        layer_helper = LayerHelper(self.full_name(), act='relu')
+        layer_helper = LayerHelper(self.full_name(), act='relu', use_mkldnn=True)
         return layer_helper.append_activation(y)
 
 

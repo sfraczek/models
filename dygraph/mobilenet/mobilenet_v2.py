@@ -112,7 +112,7 @@ class InvertedResidualUnit(fluid.dygraph.Layer):
         y = self._bottleneck_conv(y, if_act=True)
         y = self._linear_conv(y, if_act=False)
         if ifshortcut:
-            y = fluid.layers.elementwise_add(inputs, y)
+            y = fluid.layers.elementwise_add(inputs, y, use_mkldnn=True)
         return y
 
 

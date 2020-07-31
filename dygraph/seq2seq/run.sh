@@ -1,7 +1,7 @@
 #!/bin/bash
 export CUDA_VISIBLE_DEVICES=0
 
-python train.py \
+PYTHONPATH=/mnt/drive/PaddlePaddle/Paddle/build FLAGS_use_mkldnn=true python train.py \
         --src_lang en --tar_lang vi \
         --attention True \
         --num_layers 2 \
@@ -16,5 +16,5 @@ python train.py \
         --eval_data_prefix data/en-vi/tst2012 \
         --test_data_prefix data/en-vi/tst2013 \
         --vocab_prefix data/en-vi/vocab \
-        --use_gpu True \
+        --use_gpu False \
         --model_path attention_models
