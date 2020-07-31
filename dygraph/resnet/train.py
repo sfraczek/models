@@ -343,7 +343,7 @@ def eval(model, data):
         total_acc5 += acc_top5.numpy()
         total_sample += 1
 
-        if True or batch_id % 10 == 0:
+        if batch_id % 10 == 0:
             print("test | batch step %d, acc1 %0.3f acc5 %0.3f" % \
                   ( batch_id, total_acc1 / total_sample, total_acc5 / total_sample))
     if args.ce:
@@ -462,7 +462,7 @@ def train_resnet():
 
                 train_batch_cost = time.time() - batch_start
                 total_batch_num = total_batch_num + 1  #this is for benchmark
-                if True or batch_id % 10 == 0:
+                if batch_id % 10 == 0:
                     print(
                         "[Epoch %d, batch %d] loss %.5f, acc1 %.5f, acc5 %.5f, batch_cost: %.5f s, reader_cost: %.5f s"
                         % (eop, batch_id, total_loss / total_sample,
